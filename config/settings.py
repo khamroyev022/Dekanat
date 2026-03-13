@@ -97,3 +97,16 @@ USE_TZ = True
 
 
 STATIC_URL = 'static/'
+
+
+HEMIS_TOKEN = 'p6i9w9S97-O8eVzK1IrMY2exgkwiEcq-'
+
+
+
+
+
+
+
+
+
+
