@@ -9,7 +9,7 @@ from .models import Faculty, Direction, Group, Student, StudentDetail
 
 class HEMISStudentImportService:
 
-    def __init__(self, base_url, headers=None, timeout=20, save_images=False):
+    def __init__(self, base_url, headers=None, timeout=50, save_images=False):
         self.base_url = base_url
         self.headers = headers or {}
         self.timeout = timeout
@@ -80,7 +80,8 @@ class HEMISStudentImportService:
         current_district_data = item.get("currentDistrict") or {}
         education_type_data = item.get("educationType") or {}
         level_data = item.get("level") or {}
-
+        image = item.get('image') or {}
+        image_full = item.get('image_full') or {}
         faculty_name = department.get("name", "").strip() or "Noma'lum fakultet"
         faculty_code = department.get("code", "").strip() or "unknown"
 
@@ -167,6 +168,8 @@ class HEMISStudentImportService:
             "course": course,
             "email": email,
             "group": group_obj,
+            "image":image,
+            "image_full":image_full
         }
 
         student, created = Student.objects.update_or_create(

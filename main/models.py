@@ -134,7 +134,7 @@ class Direction(models.Model):
 
 
 class Group(models.Model):
-    name = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=250, unique=True)
     education_code = models.CharField(max_length=20)
     education_language = models.CharField(max_length=30)
     user = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='tutor_groups')
@@ -158,12 +158,11 @@ class Student(models.Model):
     birthday = models.DateField(null=True)
     gender = models.CharField(max_length=10, choices=GENDER_CHOICES)
     country = models.CharField(max_length=50,null=True,blank=True)
-    image_full = models.ImageField(upload_to='student/images/full/', null=True, blank=True)
-    image_none = models.ImageField(upload_to='student/images/', null=True, blank=True)
-    image_full_none = models.ImageField(upload_to='student/images/', null=True, blank=True)
+    image = models.CharField(max_length=255,null=True, blank=True)
+    image_full = models.CharField(max_length=255,null=True, blank=True)
     avg_gpa = models.DecimalField(max_digits=4, decimal_places=2, null=True)
     course = models.CharField(max_length=15)
-    hemis_id = models.CharField(max_length=13)
+    hemis_id = models.CharField(max_length=13, unique=True)
     email = models.EmailField(null=True, blank=True)
     phone = models.CharField(max_length=20,null=True,blank=True)
     group = models.ForeignKey(Group, on_delete=models.PROTECT, related_name='students')
