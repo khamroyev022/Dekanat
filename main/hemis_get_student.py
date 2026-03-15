@@ -108,9 +108,7 @@ class HEMISStudentImportService:
 
         faculty, _ = Faculty.objects.get_or_create(
             code=faculty_code,
-            defaults={
-                "name": faculty_name,
-            }
+            defaults={"name": faculty_name}
         )
 
         if faculty.name != faculty_name:
@@ -119,10 +117,7 @@ class HEMISStudentImportService:
 
         direction, _ = Direction.objects.get_or_create(
             code=direction_code,
-            defaults={
-                "name": direction_name,
-                "faculty": faculty,
-            }
+            defaults={"name": direction_name, "faculty": faculty}
         )
 
         changed = False

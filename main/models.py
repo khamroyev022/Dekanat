@@ -67,17 +67,17 @@ class Role(models.Model):
 
 
 class CustomUser(AbstractUser):
-    first_name = models.CharField(max_length=30)
-    last_name = models.CharField(max_length=30)
-    third_name = models.CharField(max_length=30)
-    birthday = models.DateField()
+    first_name = models.CharField(max_length=30,null=True, blank=True)
+    last_name = models.CharField(max_length=30,null=True, blank=True)
+    third_name = models.CharField(max_length=30,null=True, blank=True)
+    birthday = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=30, choices=GENDER_CHOICES)
     image = models.ImageField(upload_to='users/images/', null=True, blank=True)
-    address = models.CharField(max_length=255)
-    nationality = models.CharField(max_length=50)
-    passport_seria = models.CharField(max_length=30)
-    phone_number = models.CharField(max_length=20)
-    workplace = models.CharField(max_length=100)
+    address = models.CharField(max_length=255,null=True, blank=True)
+    nationality = models.CharField(max_length=50,null=True, blank=True)
+    passport_seria = models.CharField(max_length=30,null=True, blank=True)
+    phone_number = models.CharField(max_length=20,null=True, blank=True)
+    workplace = models.CharField(max_length=100,null=True, blank=True)
     role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name='users')
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -103,7 +103,7 @@ class CustomUser(AbstractUser):
 
 
 class Faculty(models.Model):
-    name = models.CharField(max_length=150)
+    name = models.CharField(max_length=150,unique=True)
     code = models.CharField(max_length=30)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -119,7 +119,7 @@ class Faculty(models.Model):
 
 class Direction(models.Model):
     name = models.CharField(max_length=150)
-    code = models.CharField(max_length=10, unique=True)
+    code = models.CharField(max_length=10)
     faculty = models.ForeignKey(Faculty, on_delete=models.PROTECT, related_name='directions')
     created_at = models.DateTimeField(auto_now_add=True)
 

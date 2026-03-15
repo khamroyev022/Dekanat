@@ -19,14 +19,15 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
     'drf_yasg',
     'rest_framework',
     'rest_framework.authtoken',
     'main',
-
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -101,9 +102,21 @@ STATIC_URL = 'static/'
 
 HEMIS_TOKEN = 'p6i9w9S97-O8eVzK1IrMY2exgkwiEcq-'
 
+AUTH_USER_MODEL = 'main.CustomUser'
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': ()
+}
 
 
-
+CORS_ALLOWED_ALL_ORIGINS=True
+CORS_ALLOW_METHODS = (
+    "DELETE",
+    "GET",
+    "OPTIONS",
+    "PATCH",
+    "POST",
+    "PUT",
+)
 
 
 
