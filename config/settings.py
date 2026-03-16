@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     'drf_yasg',
     'rest_framework',
     'rest_framework.authtoken',
+    'rest_framework_simplejwt',
     'main',
 ]
 
@@ -57,8 +58,6 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 
-# Database
-# https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
     'default': {
@@ -104,11 +103,18 @@ HEMIS_TOKEN = 'p6i9w9S97-O8eVzK1IrMY2exgkwiEcq-'
 
 AUTH_USER_MODEL = 'main.CustomUser'
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': ()
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ]
 }
 
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+]
 
-CORS_ALLOWED_ALL_ORIGINS=True
+# CORS_ALLOW_ALL_ORIGINS = True
+
 CORS_ALLOW_METHODS = (
     "DELETE",
     "GET",
@@ -117,7 +123,13 @@ CORS_ALLOW_METHODS = (
     "POST",
     "PUT",
 )
+from datetime import timedelta
 
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'AUTH_HEADER_TYPES': ('Bearer',),
+}
 
 
 

@@ -78,19 +78,9 @@ class CustomUser(AbstractUser):
     passport_seria = models.CharField(max_length=30,null=True, blank=True)
     phone_number = models.CharField(max_length=20,null=True, blank=True)
     workplace = models.CharField(max_length=100,null=True, blank=True)
-    role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name='users')
+    role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name='users',default = 1)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    groups = models.ManyToManyField(
-        'auth.Group',
-        related_name='custom_users',
-        blank=True
-    )
-    user_permissions = models.ManyToManyField(
-        'auth.Permission',
-        related_name='custom_users',
-        blank=True
-    )
 
     def __str__(self):
         return self.username
@@ -140,7 +130,6 @@ class Group(models.Model):
     user = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='tutor_groups')
     direction = models.ForeignKey(Direction, on_delete=models.PROTECT, related_name='groups')
     created_at = models.DateTimeField(auto_now_add=True)
-
     def __str__(self):
         return self.name
 
