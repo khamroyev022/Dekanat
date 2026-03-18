@@ -98,7 +98,6 @@ class CreateUserviewset(viewsets.ModelViewSet):
     serializer_class = CreateUserSerializer
     permission_classes = [AllowAny]
 
-
 class TutorApiView(APIView):
     permission_classes = [AllowAny]
 
@@ -113,22 +112,23 @@ class TutorApiView(APIView):
             }, status=status.HTTP_404_NOT_FOUND)
 
         if user.role.id != 3:
+
+            groups = Group.objects.filter(user=user)
+            serializer = TutorGroupSerializer(groups, many=True)
+
+            return Response({
+                'success': True,
+                'message': "Tyutor guruhlari",
+                'count': groups.count(),
+                'data': serializer.data,
+                'username': user.username,
+            }, status=status.HTTP_200_OK)
+        else:
             return Response({
                 'success': False,
                 'message': "Siz tyutor emassiz",
                 'data': None
             }, status=status.HTTP_403_FORBIDDEN)
-
-        groups = Group.objects.filter(user=user)
-        serializer = TutorGroupSerializer(groups, many=True)
-
-        return Response({
-            'success': True,
-            'message': "Tyutor guruhlari",
-            'count': groups.count(),
-            'data': serializer.data,
-            'username': user.username,
-        }, status=status.HTTP_200_OK)
 
 
 
