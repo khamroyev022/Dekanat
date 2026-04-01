@@ -5,14 +5,14 @@ from django.dispatch import receiver
 import os
 
 GENDER_CHOICES = (
-    ('male', 'Erkak'),
-    ('female', 'Ayol'),
-    ('other', 'Boshqa'),
+    ('erkak', 'Erkak'),
+    ('ayol', 'Ayol'),
+    ('boshqa', 'Boshqa'),
 )
 
 ROLE_CHOICES = (
     ('admin', 'Admin'),
-    ('tutor', 'Tutor'),
+    ('tutor', 'Tyutor'),
     ('dekan', 'Dekan'),
     ('zam_dekan', 'Zam dekan'),
 )

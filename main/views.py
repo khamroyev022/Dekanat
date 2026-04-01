@@ -12,8 +12,10 @@ from rest_framework import viewsets
 from rest_framework import  status
 from  .hemis_get_student import HEMISStudentImportService
 from rest_framework_simplejwt.tokens import RefreshToken
+
+
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def import_students(request):
     base_url = request.data.get("base_url") or "https://student.bsmi.uz/rest/v1/data/student-list"
     token = request.data.get("token") or HEMIS_TOKEN
@@ -37,7 +39,7 @@ def import_students(request):
     }, status=status.HTTP_200_OK)
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def update_students(request):
     base_url = "https://student.bsmi.uz/rest/v1/data/student-list"
     token = HEMIS_TOKEN
@@ -112,7 +114,6 @@ class TutorApiView(APIView):
             }, status=status.HTTP_404_NOT_FOUND)
 
         if user.role.id != 3:
-
             groups = Group.objects.filter(user=user)
             serializer = TutorGroupSerializer(groups, many=True)
 
@@ -129,6 +130,45 @@ class TutorApiView(APIView):
                 'message': "Siz tyutor emassiz",
                 'data': None
             }, status=status.HTTP_403_FORBIDDEN)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -49,6 +49,10 @@ class TutorGroupSerializer(serializers.ModelSerializer):
             'faculty_name',
         )
 
+class StudentInterestserializer(serializers.ModelSerializer):
+    class Meta:
+
+class StudentGetserializer(serializers.ModelSerializer):
 
 
 
