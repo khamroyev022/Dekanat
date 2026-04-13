@@ -1,7 +1,10 @@
 import os
+import time
 from datetime import datetime
 from decimal import Decimal
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from django.core.files.base import ContentFile
 from django.db import transaction
 from .models import Faculty, Direction, Group, Student, StudentDetail
@@ -14,29 +17,59 @@ class HEMISStudentImportService:
         self.headers = headers or {}
         self.timeout = timeout
         self.save_images = save_images
+        self.session = self._create_session()  # ✅ Retry session
+
+    def _create_session(self):
+        session = requests.Session()
+        retry = Retry(
+            total=3,
+            backoff_factor=2,        # 2, 4, 8 sekund kutadi
+            status_forcelist=[500, 502, 503, 504],
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        return session
 
     def fetch_page(self, page=1):
-
-        response = requests.get(
-            self.base_url,
-            headers=self.headers,
-            params={"page": page},
-            timeout=self.timeout
-        )
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = self.session.get(
+                self.base_url,
+                headers=self.headers,
+                params={"page": page},
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.ConnectTimeout:
+            print(f"Timeout xatosi: server javob bermadi (page={page})")
+            return None
+        except requests.exceptions.ConnectionError:
+            print(f"Ulanish xatosi: internet yoki server muammosi (page={page})")
+            return None
+        except requests.exceptions.RequestException as e:
+            print(f"So'rov xatosi (page={page}): {e}")
+            return None
 
     def run(self, start_page=1, max_pages=None):
-
         page = start_page
         created_count = 0
         updated_count = 0
+        failed_pages = []
 
         while True:
             if max_pages and page > max_pages:
                 break
 
             data = self.fetch_page(page=page)
+
+            # ✅ Timeout yoki connection xatosi bo'lsa skip qilib davom etadi
+            if data is None:
+                print(f"Page {page} o'tkazib yuborildi, 10 sekund kutilmoqda...")
+                failed_pages.append(page)
+                time.sleep(10)
+                page += 1
+                continue
 
             if not data.get("success"):
                 print(f"API xatolik qaytardi. page={page}, error={data.get('error')}")
@@ -57,16 +90,21 @@ class HEMISStudentImportService:
                     updated_count += 1
 
             page += 1
+            time.sleep(1)  # ✅ Har sahifa orasida 1 sekund tanaffus
+
+        print(f"Yakunlandi: {created_count} ta yangi, {updated_count} ta yangilandi.")
+        if failed_pages:
+            print(f"Muvaffaqiyatsiz sahifalar: {failed_pages}")
 
         return {
             "created": created_count,
             "updated": updated_count,
-            "last_page": page - 1
+            "last_page": page - 1,
+            "failed_pages": failed_pages,
         }
 
     @transaction.atomic
     def save_student(self, item):
-
         university = item.get("university") or {}
         department = item.get("department") or {}
         specialty = item.get("specialty") or {}
@@ -80,8 +118,8 @@ class HEMISStudentImportService:
         current_district_data = item.get("currentDistrict") or {}
         education_type_data = item.get("educationType") or {}
         level_data = item.get("level") or {}
-        image = item.get('image') or {}
-        image_full = item.get('image_full') or {}
+        image_hemis = item.get('image') or None
+
         faculty_name = department.get("name", "").strip() or "Noma'lum fakultet"
         faculty_code = department.get("code", "").strip() or "unknown"
 
@@ -97,39 +135,37 @@ class HEMISStudentImportService:
         third_name = (item.get("third_name") or "").strip()
 
         gender = self._map_gender(gender_data.get("name"))
-        birthday = self._parse_unix_date(item.get("birth_date"))
+        birthday = self._parse_unix_date(item.get("birth_date")) or "Mavjud emas"
         avg_gpa = self._parse_decimal(item.get("avg_gpa"))
         course = level_data.get("name", "").strip() or "Noma'lum"
 
-
         hemis_id = str(item.get("student_id_number") or item.get("id") or "")
 
-        email = (item.get("email") or "").strip() or None
-
+        # Faculty
         faculty, _ = Faculty.objects.get_or_create(
             code=faculty_code,
             defaults={"name": faculty_name}
         )
-
         if faculty.name != faculty_name:
             faculty.name = faculty_name
             faculty.save(update_fields=["name"])
 
+        # Direction
         direction, _ = Direction.objects.get_or_create(
             code=direction_code,
             defaults={"name": direction_name, "faculty": faculty}
         )
-
-        changed = False
+        direction_changed = False
         if direction.name != direction_name:
             direction.name = direction_name
-            changed = True
+            direction_changed = True
         if direction.faculty_id != faculty.id:
             direction.faculty = faculty
-            changed = True
-        if changed:
+            direction_changed = True
+        if direction_changed:
             direction.save()
 
+        # Group
         group_obj, _ = Group.objects.get_or_create(
             name=group_name,
             defaults={
@@ -138,7 +174,6 @@ class HEMISStudentImportService:
                 "direction": direction,
             }
         )
-
         group_changed = False
         if group_obj.education_code != education_code:
             group_obj.education_code = education_code
@@ -152,6 +187,7 @@ class HEMISStudentImportService:
         if group_changed:
             group_obj.save()
 
+        # Student
         student_defaults = {
             "first_name": first_name,
             "last_name": last_name,
@@ -161,10 +197,9 @@ class HEMISStudentImportService:
             "country": country_data.get("name"),
             "avg_gpa": avg_gpa,
             "course": course,
-            "email": email,
             "group": group_obj,
-            "image":image,
-            "image_full":image_full
+            "image": None,
+            "image_hemis": image_hemis,
         }
 
         student, created = Student.objects.update_or_create(
@@ -175,6 +210,7 @@ class HEMISStudentImportService:
         if self.save_images:
             self._save_student_images(student, item)
 
+        # StudentDetail
         StudentDetail.objects.update_or_create(
             student=student,
             defaults={
@@ -191,7 +227,6 @@ class HEMISStudentImportService:
         return created, not created
 
     def _parse_unix_date(self, timestamp):
-
         if not timestamp:
             return None
         try:
@@ -208,10 +243,8 @@ class HEMISStudentImportService:
             return None
 
     def _map_gender(self, gender_name):
-
         if not gender_name:
             return "erkak"
-
         gender_name = gender_name.lower()
         if "erkak" in gender_name:
             return "erkak"
@@ -220,41 +253,41 @@ class HEMISStudentImportService:
         return "erkak"
 
     def _map_education_type(self, education_type_name):
-
         if not education_type_name:
             return "nomalum"
-
         val = education_type_name.lower()
-
         if "bakalavr" in val:
             return "bakalavr"
         if "magistr" in val:
             return "magistr"
         return "nomalum"
 
+    # ✅ To'g'rilandi: image_none → image, image_full_none → image_full
     def _save_student_images(self, student, item):
-
         image_url = item.get("image")
         image_full_url = item.get("image_full")
+        changed = False
 
-        if image_url and not student.image_none:
+        if image_url and not student.image:
             content = self._download_file(image_url)
             if content:
                 filename = self._build_filename(student.hemis_id, image_url)
-                student.image_none.save(filename, content, save=False)
+                student.image.save(filename, content, save=False)
+                changed = True
 
-        if image_full_url and not student.image_full_none:
+        if image_full_url and not student.image_full:
             content = self._download_file(image_full_url)
             if content:
                 filename = self._build_filename(f"{student.hemis_id}_full", image_full_url)
-                student.image_full_none.save(filename, content, save=False)
+                student.image_full.save(filename, content, save=False)
+                changed = True
 
-        if student.image_none or student.image_full_none:
+        if changed:
             student.save()
 
     def _download_file(self, url):
         try:
-            response = requests.get(url, timeout=self.timeout)
+            response = self.session.get(url, timeout=self.timeout)  # ✅ session ishlatiladi
             response.raise_for_status()
             return ContentFile(response.content)
         except Exception as e:
