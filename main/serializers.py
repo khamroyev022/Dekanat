@@ -29,7 +29,6 @@ class LoginSerializer(serializers.ModelSerializer):
             'tutor_groups',
         )
 
-
 class CreateUserSerializer(serializers.ModelSerializer):
     group_ids = serializers.ListField(
         child=serializers.IntegerField(),
@@ -126,3 +125,53 @@ class Roleserializer(serializers.ModelSerializer):
     class Meta:
         model = Role
         fields = ('id','name',)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
