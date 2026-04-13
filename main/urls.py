@@ -11,7 +11,7 @@ urlpatterns = [
     path('groups/',TutorApiView.as_view()),
     path('students/<int:id>',StudentGEtApiView.as_view()),
     path('students/<int:id>/', StudentGEtApiView.as_view()),
-    path('role/', role_get)
+    path('roles/', role_get)
 ]+ router.urls
 
 

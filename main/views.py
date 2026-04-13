@@ -152,32 +152,6 @@ class TutorApiView(APIView):
             'data': None
         }, status=status.HTTP_403_FORBIDDEN)
 
-# class StudentGEtApiView(APIView):
-#     permission_classes = [IsAuthenticated]
-#
-#     def get(self, request, id):
-#         try:
-#             group = Group.objects.get(id=id)
-#         except Group.DoesNotExist:
-#             return Response({
-#                 'success': False,
-#                 'message': "Guruh topilmadi",
-#                 'data': None
-#             }, status=status.HTTP_404_NOT_FOUND)
-#
-#         students = group.students.all()
-#
-#         pagination = StudentPagination()
-#         result = pagination.paginate_queryset(students, request)
-#
-#         serializer = Studentserializer(result, many=True)
-#
-#         return pagination.get_paginated_response({
-#             'success': True,
-#             'message': "Guruh studentlari",
-#             'data': serializer.data,
-#         })
-
 class StudentGEtApiView(APIView):
     permission_classes = [IsAuthenticated]
 
