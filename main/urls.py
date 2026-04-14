@@ -9,9 +9,12 @@ urlpatterns = [
     path('update-students/',update_students),
     path('login/',login,name='login'),
     path('groups/',TutorApiView.as_view()),
-    path('students/<int:id>',StudentGEtApiView.as_view()),
+    path('students/', StudentGEtApiView.as_view()),
     path('students/<int:id>/', StudentGEtApiView.as_view()),
-    path('roles/', role_get)
+    path('roles/', role_get),
+    path('dean/faculty/', DekanFacultyView.as_view(), name='dekan-faculty'),
+    path('dean/students/', DekanStudentView.as_view(), name='dekan-students'),
+    path('faculty/', FacultyApiview.as_view()),
 ]+ router.urls
 
 

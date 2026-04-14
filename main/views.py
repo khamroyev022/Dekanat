@@ -18,6 +18,12 @@ from rest_framework import  status
 from  .hemis_get_student import HEMISStudentImportService
 from rest_framework_simplejwt.tokens import RefreshToken
 
+ROLE_TUTOR_ID = 2
+ROLE_ADMIN_ID = 1
+ROLE_DEKAN_ID = 3
+ROLE_ZAM_DEKAN_ID = 4
+
+DEKAN_ROLE_IDS = [3, 4]  # dekan va zam_dekan
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -105,13 +111,14 @@ class CreateUserViewSet(viewsets.ModelViewSet):
     serializer_class = CreateUserSerializer
     permission_classes = [AllowAny]
 
+
 class TutorApiView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         user = request.user
 
-        if not user or not user.role:
+        if not user or not user.role_id:
             return Response({
                 'success': False,
                 'message': "Foydalanuvchi yoki role mavjud emas",
@@ -120,20 +127,20 @@ class TutorApiView(APIView):
 
         pagination = StudentPagination()
 
-        if user.role.id == 2:
+        if user.role_id == ROLE_TUTOR_ID:
             groups = Group.objects.filter(tutor=user)
             result = pagination.paginate_queryset(groups, request)
             serializer = TutorGroupSerializer(result, many=True)
 
             return pagination.get_paginated_response({
                 'success': True,
-               'username': user.username,
+                'username': user.username,
                 'message': "Tyutor guruhlari",
                 'count': groups.count(),
                 'data': serializer.data,
             })
 
-        elif user.role.id in [1, 3]:
+        elif user.role_id in [ROLE_ADMIN_ID, ROLE_DEKAN_ID, ROLE_ZAM_DEKAN_ID]:
             groups = Group.objects.all()
             result = pagination.paginate_queryset(groups, request)
             serializer = GroupSerializer(result, many=True)
@@ -148,42 +155,51 @@ class TutorApiView(APIView):
 
         return Response({
             'success': False,
-            'message': "Ruxsat yo‘q",
+            'message': "Ruxsat yo'q",
             'data': None
         }, status=status.HTTP_403_FORBIDDEN)
 
 class StudentGEtApiView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, id):
-        try:
-            group = Group.objects.get(id=id)
-        except Group.DoesNotExist:
-            return Response({
-                'success': False,
-                'message': "Guruh topilmadi",
-                'data': None
-            }, status=status.HTTP_404_NOT_FOUND)
+    def get(self, request):
+        group_id = request.query_params.get('group_id')
+        pagination = StudentPagination()
 
-        # Tutor faqat o'zining guruhini ko'ra oladi
-        if getattr(request.user.role, 'name', None) == 'tutor':
-            if group.tutor != request.user:
+        if group_id:
+            try:
+                group = Group.objects.get(id=group_id)
+            except Group.DoesNotExist:
                 return Response({
                     'success': False,
-                    'message': "Bu guruhga ruxsatingiz yo'q",
+                    'message': "Guruh topilmadi",
                     'data': None
-                }, status=status.HTTP_403_FORBIDDEN)
+                }, status=status.HTTP_404_NOT_FOUND)
 
-        students = group.students.all()
+            if request.user.role_id == ROLE_TUTOR_ID:
+                if group.tutor != request.user:
+                    return Response({
+                        'success': False,
+                        'message': "Bu guruhga ruxsatingiz yo'q",
+                        'data': None
+                    }, status=status.HTTP_403_FORBIDDEN)
 
-        pagination = StudentPagination()
+            students = group.students.all()
+            message = "Guruh studentlari"
+
+        else:
+            if request.user.role_id == ROLE_TUTOR_ID:
+                students = Student.objects.filter(group__tutor=request.user)
+            else:
+                students = Student.objects.all()
+            message = "Sizning guruhlaringiz studentlari"
+
         result = pagination.paginate_queryset(students, request)
-
         serializer = Studentserializer(result, many=True)
 
         return pagination.get_paginated_response({
             'success': True,
-            'message': "Guruh studentlari",
+            'message': message,
             'data': serializer.data,
         })
 
@@ -205,10 +221,108 @@ def role_get(request):
     },status=status.HTTP_400_BAD_REQUEST)
 
 
+class DekanFacultyView(APIView):
+    permission_classes = [IsAuthenticated]
 
+    def get_faculty(self, request):
+        if request.user.role_id not in DEKAN_ROLE_IDS:
+            return None, Response({
+                'success': False,
+                'message': "Sizda dekan yoki zam dekan roli yo'q",
+                'data': None
+            }, status=status.HTTP_403_FORBIDDEN)
 
+        if not request.user.faculty_id:
+            return None, Response({
+                'success': False,
+                'message': "Sizga fakultet biriktirilmagan",
+                'data': None
+            }, status=status.HTTP_404_NOT_FOUND)
 
+        return request.user.faculty, None
 
+    def get(self, request):
+        faculty, error = self.get_faculty(request)
+        if error:
+            return error
+
+        directions = faculty.directions.all()
+
+        pagination = StudentPagination()
+        result = pagination.paginate_queryset(directions, request)
+        serializer = DirectionDekanSerializer(result, many=True)
+
+        return pagination.get_paginated_response({
+            'success': True,
+            'message': "Fakultet ma'lumotlari",
+            'faculty': {
+                'id': faculty.id,
+                'name': faculty.name,
+                'code': faculty.code,
+            },
+            'data': serializer.data
+        })
+
+class DekanStudentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role_id not in DEKAN_ROLE_IDS:
+            return Response({
+                'success': False,
+                'message': "Sizda dekan yoki zam dekan roli yo'q",
+                'data': None
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        if not request.user.faculty_id:
+            return Response({
+                'success': False,
+                'message': "Sizga fakultet biriktirilmagan",
+                'data': None
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        faculty = request.user.faculty
+
+        students = Student.objects.filter(
+            group__direction__faculty=faculty
+        ).select_related('group__direction')
+
+        direction_id = request.query_params.get('direction_id')
+        group_id = request.query_params.get('group_id')
+        course = request.query_params.get('course')
+        gender = request.query_params.get('gender')
+
+        if direction_id:
+            students = students.filter(group__direction_id=direction_id)
+        if group_id:
+            students = students.filter(group_id=group_id)
+        if course:
+            students = students.filter(course=course)
+        if gender:
+            students = students.filter(gender=gender)
+
+        pagination = StudentPagination()
+        result = pagination.paginate_queryset(students, request)
+        serializer = StudentDekanSerializer(result, many=True)
+
+        return pagination.get_paginated_response({
+            'success': True,
+            'message': "Fakultet studentlari",
+            'data': serializer.data
+        })
+
+class FacultyApiview(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+
+        factulty = Faculty.objects.all()
+        ser = Facultyserializer(factulty, many=True)
+        return Response({
+            'success': True,
+            'message': "Fakultet mavjud ",
+            'data': ser.data
+
+        },status=status.HTTP_200_OK)
 
 
 

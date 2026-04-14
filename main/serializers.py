@@ -63,7 +63,9 @@ class CreateUserSerializer(serializers.ModelSerializer):
         if groups:
             user.groups.set(groups)
 
-        if group_ids and getattr(user.role, 'name', None) == 'tutor':
+        # ✅ name ni lowercase va strip qilib tekshirish
+        role_name = getattr(user.role, 'name', '') or ''
+        if group_ids and role_name.lower().strip() == 'tyutor':
             Group.objects.filter(id__in=group_ids).update(tutor=user)
 
         return user
@@ -126,10 +128,55 @@ class Roleserializer(serializers.ModelSerializer):
         model = Role
         fields = ('id','name',)
 
+# Dekan ushun serializer
+class FacultyDekanSerializer(serializers.ModelSerializer):
+    directions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Faculty
+        fields = ['id', 'name', 'code', 'directions']
+
+    def get_directions(self, obj):
+        directions = obj.directions.all()
+        return DirectionDekanSerializer(directions, many=True).data
+
+
+class DirectionDekanSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Direction
+        fields = ['id', 'name', 'code', ]
 
 
 
 
+
+
+    def get_student_count(self, obj):
+        return obj.students.count()
+
+class StudentDekanSerializer(serializers.ModelSerializer):
+    group_name = serializers.CharField(source='group.name', read_only=True)
+    direction_name = serializers.CharField(source='group.direction.name', read_only=True)
+
+    class Meta:
+        model = Student
+        fields = [
+            'id', 'first_name', 'last_name', 'third_name',
+            'hemis_id', 'gender', 'avg_gpa', 'course',
+            'group_name', 'direction_name', 'image_hemis'
+        ]
+
+# Dekan ushun serializer
+class Directionserializer(serializers.ModelSerializer):
+    class Meta:
+        model = Direction
+        fields = ['id', 'name', 'code']
+
+class Facultyserializer(serializers.ModelSerializer):
+    class Meta:
+        model = Faculty
+        fields = ['id', 'name', 'code',]
 
 
 
