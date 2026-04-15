@@ -324,8 +324,11 @@ class FacultyApiview(APIView):
 
         },status=status.HTTP_200_OK)
 
-
-
+# class DirectionGroups(APIView)
+#     permission_classes = [IsAuthenticated]
+#     def get(self, request,id):
+#         if user.roleDEKAN_ROLE_IDS:
+#
 
 
 
