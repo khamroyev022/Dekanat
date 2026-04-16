@@ -111,7 +111,6 @@ class CreateUserViewSet(viewsets.ModelViewSet):
     serializer_class = CreateUserSerializer
     permission_classes = [AllowAny]
 
-
 class TutorApiView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -158,17 +157,21 @@ class TutorApiView(APIView):
             'message': "Ruxsat yo'q",
             'data': None
         }, status=status.HTTP_403_FORBIDDEN)
-
-class StudentGEtApiView(APIView):
+class StudentGetApiView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+
         group_id = request.query_params.get('group_id')
+        group_name = request.query_params.get('group_name')  # ← nom bo'yicha ham
         pagination = StudentPagination()
 
-        if group_id:
+        if group_id or group_name:
             try:
-                group = Group.objects.get(id=group_id)
+                if group_id:
+                    group = Group.objects.get(id=group_id)
+                else:
+                    group = Group.objects.get(name__icontains=group_name)  # ← icontains - katta/kichik harf farq qilmaydi
             except Group.DoesNotExist:
                 return Response({
                     'success': False,
@@ -185,24 +188,23 @@ class StudentGEtApiView(APIView):
                     }, status=status.HTTP_403_FORBIDDEN)
 
             students = group.students.all()
-            message = "Guruh studentlari"
+            message = f"'{group.name}' guruh studentlari"
 
         else:
             if request.user.role_id == ROLE_TUTOR_ID:
                 students = Student.objects.filter(group__tutor=request.user)
             else:
                 students = Student.objects.all()
-            message = "Sizning guruhlaringiz studentlari"
+            message = "Barcha studentlar"
 
         result = pagination.paginate_queryset(students, request)
-        serializer = Studentserializer(result, many=True)
+        serializer = StudentSerializer(result, many=True)
 
         return pagination.get_paginated_response({
             'success': True,
             'message': message,
             'data': serializer.data,
         })
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def role_get(request):
@@ -219,7 +221,6 @@ def role_get(request):
         'message': "role mavjud ",
         'data': None
     },status=status.HTTP_400_BAD_REQUEST)
-
 
 class DekanFacultyView(APIView):
     permission_classes = [IsAuthenticated]
@@ -324,11 +325,63 @@ class FacultyApiview(APIView):
 
         },status=status.HTTP_200_OK)
 
-# class DirectionGroups(APIView)
-#     permission_classes = [IsAuthenticated]
-#     def get(self, request,id):
-#         if user.roleDEKAN_ROLE_IDS:
-#
+class DirectionGroups(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, id):
+        try:
+            direction = Direction.objects.get(id=id)
+        except Direction.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': "Yo'nalish topilmadi",
+                'data': None
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Dekan / Zam dekan — faqat o'z fakultetidagi yo'nalishni ko'radi
+        if request.user.role_id in DEKAN_ROLE_IDS:
+            if not request.user.faculty_id:
+                return Response({
+                    'success': False,
+                    'message': "Sizga fakultet biriktirilmagan",
+                    'data': None
+                }, status=status.HTTP_403_FORBIDDEN)
+
+            if direction.faculty_id != request.user.faculty_id:
+                return Response({
+                    'success': False,
+                    'message': "Bu yo'nalish sizning fakultetingizga tegishli emas",
+                    'data': None
+                }, status=status.HTTP_403_FORBIDDEN)
+
+            groups = Group.objects.filter(direction=direction)
+
+        # Tutor — faqat o'ziga biriktirilgan guruhlarni ko'radi
+        elif request.user.role_id == ROLE_TUTOR_ID:
+            groups = Group.objects.filter(direction=direction, tutor=request.user)
+
+        # Admin — hammasini ko'radi
+        elif request.user.role_id == ROLE_ADMIN_ID:
+            groups = Group.objects.filter(direction=direction)
+
+        else:
+            return Response({
+                'success': False,
+                'message': "Ruxsat yo'q",
+                'data': None
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = GroupSerializer(groups, many=True)
+        return Response({
+            'success': True,
+            'message': "Yo'nalish guruhlari",
+            'direction': {
+                'id': direction.id,
+                'name': direction.name,
+                'code': direction.code,
+            },
+            'data': serializer.data
+        })
 
 
 
