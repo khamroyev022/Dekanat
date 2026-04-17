@@ -14,7 +14,10 @@ urlpatterns = [
     path('dean/faculty/', DekanFacultyView.as_view(), name='dekan-faculty'),
     path('dean/students/', DekanStudentView.as_view(), name='dekan-students'),
     path('directions/<int:id>/groups/', DirectionGroups.as_view()),
-    path('faculty/', FacultyApiview.as_view()),
+    path('faculties/', FacultyApiview.as_view()),
+    path('logout/', LogoutView.as_view(), name='logout'),
+
+
 ]+ router.urls
 
 

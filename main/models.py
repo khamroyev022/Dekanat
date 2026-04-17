@@ -67,28 +67,43 @@ class Role(models.Model):
 
 
 class CustomUserManager(BaseUserManager):
+
     def create_superuser(self, username, email=None, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
-        extra_fields.setdefault('role', 'Admin')  # ✅ default role = admin
 
+        extra_fields.pop('role', None)
+
+        email = self.normalize_email(email or '')
         user = self.model(username=username, email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
+
+        role_obj, _ = Role.objects.get_or_create(name='Admin')
+        user.role = role_obj
+        user.save(update_fields=['role'])
+
         return user
 
     def create_user(self, username, email=None, password=None, **extra_fields):
-        extra_fields.setdefault('role', 'Tutor')  # oddiy user uchun default role
+        extra_fields.pop('role', None)
 
+        email = self.normalize_email(email or '')
         user = self.model(username=username, email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
+
+        role_obj, _ = Role.objects.get_or_create(name='Tutor')
+        user.role = role_obj
+        user.save(update_fields=['role'])
+
         return user
+
 
 class CustomUser(AbstractUser):
     third_name = models.CharField(max_length=30, blank=True)
     birthday = models.DateField(null=True, blank=True)
-    gender = models.CharField(max_length=30, choices=GENDER_CHOICES, blank=True)  # blank=True qo'shing
+    gender = models.CharField(max_length=30, choices=GENDER_CHOICES, blank=True)
     image = models.ImageField(upload_to='users/images/', blank=True)
     address = models.CharField(max_length=255, blank=True)
     nationality = models.CharField(max_length=50, blank=True)

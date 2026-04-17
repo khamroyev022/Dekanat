@@ -150,7 +150,6 @@ class GroupSerializer(serializers.ModelSerializer):
         model = Group
         fields = ('id', 'name','education_language')
 
-
 class StudentSerializer(serializers.ModelSerializer):
     group_name = serializers.CharField(source='group.name', read_only=True)  # ← to'g'rilandi
 
@@ -283,7 +282,6 @@ class FacultyDekanSerializer(serializers.ModelSerializer):
     def get_directions(self, obj):
         directions = obj.directions.all()
         return DirectionDekanSerializer(directions, many=True).data
-
 
 class DirectionDekanSerializer(serializers.ModelSerializer):
 
