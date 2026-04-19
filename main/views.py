@@ -356,6 +356,7 @@ class DekanFacultyView(APIView):
 
     def get_faculty(self, request):
         if request.user.role_id not in DEKAN_ROLE_IDS:
+
             return None, Response({
                 'success': False,
                 'message': "Sizda dekan yoki zam dekan roli yo'q",

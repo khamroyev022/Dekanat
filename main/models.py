@@ -41,6 +41,8 @@ LANGUAGE_LEVEL = (
     ('C2', 'C2'),
 )
 
+
+
 MARITAL_STATUS = (
     ('single', "Bo'ydoq"),
     ('married', 'Turmush qurgan'),
@@ -161,7 +163,7 @@ class Student(models.Model):
     first_name = models.CharField(max_length=50)
     last_name = models.CharField(max_length=50)
     third_name = models.CharField(max_length=50, blank=True)
-    birthday = models.DateField()
+    birthday = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=10, choices=GENDER_CHOICES)
     country = models.CharField(max_length=50, blank=True)
     image = models.ImageField(upload_to='students/', null=True, blank=True)
