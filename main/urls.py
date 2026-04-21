@@ -7,6 +7,7 @@ router.register('users',CreateUserViewSet,basename='create_user'),
 urlpatterns = [
     path('import-students/', import_students, name='import_students'),
     path('update-students/',update_students),
+    path('roles/',RoleApiview.as_view()),
     path('login/',login,name='login'),
     path('logout/', LogoutView.as_view(), name='logout'),
     path('faculties/', FacultyGEtApipview.as_view(), name='faculties'),

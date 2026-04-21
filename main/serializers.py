@@ -308,7 +308,10 @@ class StudentSerializer1(serializers.ModelSerializer):
             'group'
         ]
 
-
+class Roleserializer(serializers.ModelSerializer):
+    class Meta:
+        model = Role
+        fields = ['id','name',]
 
 
 
@@ -325,7 +328,6 @@ class StudentDetailSerializer(serializers.ModelSerializer):
             'behavior_issues', 'is_adult',
             'created_at',
         ]
-
 
 class AchievementSerializer(serializers.ModelSerializer):
     class Meta:

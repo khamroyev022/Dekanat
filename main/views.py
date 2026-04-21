@@ -496,16 +496,9 @@ def get_student(student_id):
         return None, fail("Student topilmadi", status.HTTP_404_NOT_FOUND)
 
 
-# ─────────────────────────────────────────
-# Student CRUD
-# GET    ?group_id=1       → guruh studentlari
-# GET    ?student_id=1     → bitta student to'liq
-# POST                     → yangi student
-# PATCH  ?student_id=1     → yangilash
-# DELETE ?student_id=1     → o'chirish
-# ─────────────────────────────────────────
+
 class StudentCRUD(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get(self, request):
         student_id = request.query_params.get('student_id')
@@ -557,15 +550,8 @@ class StudentCRUD(APIView):
         return ok("Student o'chirildi", None)
 
 
-# ─────────────────────────────────────────
-# Base CRUD — barcha related modellar uchun
-# GET    ?student_id=1          → ro'yxat
-# POST   ?student_id=1          → yaratish
-# PATCH  ?student_id=1&id=2     → yangilash
-# DELETE ?student_id=1&id=2     → o'chirish
-# ─────────────────────────────────────────
 class BaseCRUD(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     serializer_class   = None
     related_name       = None
 
@@ -633,9 +619,7 @@ class BaseCRUD(APIView):
         return ok("O'chirildi", None)
 
 
-# ─────────────────────────────────────────
-# Har bir model uchun view
-# ─────────────────────────────────────────
+
 class StudentDetailCRUD(BaseCRUD):
     serializer_class = StudentDetailSerializer
     related_name     = 'details'
@@ -690,6 +674,16 @@ class ProtectionOrderCRUD(BaseCRUD):
 
 
 
+class RoleApiview(APIView):
+    permission_classes(IsAuthenticated)
+    def get(self, request):
+        role = Role.objects.all()
+        ser = Roleserializer(role, many=True)
+        return Response({
+            'success': True,
+            'message':"Rollar ro'yxati",
+            'data': ser.data,
+        })
 
 
 
