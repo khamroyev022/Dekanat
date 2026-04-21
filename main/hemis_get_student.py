@@ -1,628 +1,451 @@
-# import os
-# import time
-# from datetime import datetime
-# from decimal import Decimal
+#
+#
 # import requests
-# from requests.adapters import HTTPAdapter
-# from urllib3.util.retry import Retry
-# from django.core.files.base import ContentFile
+# from datetime import date
+#
 # from django.db import transaction
-# from .models import Faculty, Direction, Group, Student, StudentDetail
+#
+# from .models import (   # <── o'z app nomingizga qarab to'g'rilang
+#     Student, StudentDetail,
+#     Faculty, Direction, Group,
+# )
+#
+# EDUCATION_TYPE_BAKALAVR = "11"
+# CITIZENSHIP_FOREIGN     = "12"
+#
+# GENDER_MAP = {
+#     "11": "erkak",
+#     "12": "ayol",
+# }
+#
+# PAYMENT_MAP = {
+#     "11": "grant",
+#     "12": "kontrakt",
+# }
 #
 #
 # class HEMISStudentImportService:
 #
-#     def __init__(self, base_url, headers=None, timeout=50, save_images=False):
-#         self.base_url = base_url
-#         self.headers = headers or {}
-#         self.timeout = timeout
+#     def __init__(
+#         self,
+#         base_url: str,
+#         headers: dict,
+#         timeout: int = 20,
+#         save_images: bool = False,
+#     ):
+#         self.base_url    = base_url.rstrip("/")
+#         self.timeout     = timeout
 #         self.save_images = save_images
-#         self.session = self._create_session()  # ✅ Retry session
 #
-#     def _create_session(self):
-#         session = requests.Session()
-#         retry = Retry(
-#             total=3,
-#             backoff_factor=2,        # 2, 4, 8 sekund kutadi
-#             status_forcelist=[500, 502, 503, 504],
-#         )
-#         adapter = HTTPAdapter(max_retries=retry)
-#         session.mount("https://", adapter)
-#         session.mount("http://", adapter)
-#         return session
+#         self.session = requests.Session()
+#         self.session.headers.update(headers)
+#         self.session.headers.update({"Accept": "application/json"})
 #
-#     def fetch_page(self, page=1):
-#         try:
-#             response = self.session.get(
-#                 self.base_url,
-#                 headers=self.headers,
-#                 params={"page": page},
-#                 timeout=self.timeout
-#             )
-#             response.raise_for_status()
-#             return response.json()
-#         except requests.exceptions.ConnectTimeout:
-#             print(f"Timeout xatosi: server javob bermadi (page={page})")
-#             return None
-#         except requests.exceptions.ConnectionError:
-#             print(f"Ulanish xatosi: internet yoki server muammosi (page={page})")
-#             return None
-#         except requests.exceptions.RequestException as e:
-#             print(f"So'rov xatosi (page={page}): {e}")
-#             return None
 #
-#     def run(self, start_page=1, max_pages=None):
-#         page = start_page
-#         created_count = 0
-#         updated_count = 0
-#         failed_pages = []
 #
-#         while True:
-#             if max_pages and page > max_pages:
-#                 break
+#     def run(self, start_page: int = 1, max_pages: int = 583) -> dict:
+#         """
+#         Barcha sahifalarni aylanib chiqib talabalarni saqlaydi.
 #
-#             data = self.fetch_page(page=page)
+#         Qaytaradi:
+#             {
+#                 "created":   <int>,
+#                 "updated":   <int>,
+#                 "last_page": <int>,
+#             }
+#         """
+#         created   = 0
+#         updated   = 0
+#         last_page = start_page
 #
-#             # ✅ Timeout yoki connection xatosi bo'lsa skip qilib davom etadi
-#             if data is None:
-#                 print(f"Page {page} o'tkazib yuborildi, 10 sekund kutilmoqda...")
-#                 failed_pages.append(page)
-#                 time.sleep(10)
-#                 page += 1
+#         for page in range(start_page, max_pages + 1):
+#             items, real_page_count = self._fetch_page(page)
+#
+#             if items is None:
+#                 # API xatosi — bu sahifani o'tkazib, davom et
 #                 continue
 #
-#             if not data.get("success"):
-#                 print(f"API xatolik qaytardi. page={page}, error={data.get('error')}")
-#                 break
-#
-#             items = data.get("data", {}).get("items", [])
-#             if not items:
-#                 print(f"Page {page} da item yo'q. Import tugadi.")
-#                 break
-#
-#             print(f"Page {page}: {len(items)} ta student topildi")
-#
 #             for item in items:
-#                 created, updated = self.save_student(item)
-#                 if created:
-#                     created_count += 1
-#                 elif updated:
-#                     updated_count += 1
+#                 # Faqat Bakalavr
+#                 edu_code = (item.get("educationType") or {}).get("code", "")
+#                 if edu_code != EDUCATION_TYPE_BAKALAVR:
+#                     continue
 #
-#             page += 1
-#             time.sleep(1)  # ✅ Har sahifa orasida 1 sekund tanaffus
+#                 result = self._save_student(item)
+#                 if result == "created":
+#                     created += 1
+#                 elif result == "updated":
+#                     updated += 1
 #
-#         print(f"Yakunlandi: {created_count} ta yangi, {updated_count} ta yangilandi.")
-#         if failed_pages:
-#             print(f"Muvaffaqiyatsiz sahifalar: {failed_pages}")
+#             last_page = page
+#
+#             # Agar real sahifalar soni max_pages dan kam bo'lsa — to'xtat
+#             if real_page_count and page >= real_page_count:
+#                 break
 #
 #         return {
-#             "created": created_count,
-#             "updated": updated_count,
-#             "last_page": page - 1,
-#             "failed_pages": failed_pages,
+#             "created":   created,
+#             "updated":   updated,
+#             "last_page": last_page,
 #         }
+#
+#     # ──────────────────────────────────────────────────
+#     #  PRIVATE: API so'rov
+#     # ──────────────────────────────────────────────────
+#
+#     def _fetch_page(self, page: int):
+#         """
+#         Bir sahifa ma'lumotini API dan oladi.
+#
+#         Qaytaradi: (items_list, total_page_count)
+#         Xatolikda:  (None, None)
+#         """
+#         params = {"page": page, "limit": 20}
+#         try:
+#             resp = self.session.get(self.base_url, params=params, timeout=self.timeout)
+#             resp.raise_for_status()
+#             body = resp.json()
+#         except Exception:
+#             return None, None
+#
+#         if not body.get("success"):
+#             return None, None
+#
+#         pagination  = (body.get("data") or {}).get("pagination", {})
+#         page_count  = pagination.get("pageCount")
+#         items       = (body.get("data") or {}).get("items", [])
+#         return items, page_count
+#
+#     # ──────────────────────────────────────────────────
+#     #  PRIVATE: bazaga saqlash
+#     # ──────────────────────────────────────────────────
 #
 #     @transaction.atomic
-#     def save_student(self, item):
-#         university = item.get("university") or {}
-#         department = item.get("department") or {}
-#         specialty = item.get("specialty") or {}
-#         group_data = item.get("group") or {}
-#         education_lang = group_data.get("educationLang") or {}
-#         gender_data = item.get("gender") or {}
-#         country_data = item.get("country") or {}
-#         province_data = item.get("province") or {}
-#         district_data = item.get("district") or {}
-#         current_province_data = item.get("currentProvince") or {}
-#         current_district_data = item.get("currentDistrict") or {}
-#         education_type_data = item.get("educationType") or {}
-#         level_data = item.get("level") or {}
-#         image_hemis = item.get('image') or None
+#     def _save_student(self, item: dict) -> str:
+#         hemis_id = (item.get("student_id_number") or "").strip()
+#         if not hemis_id:
+#             return "skip"
 #
-#         faculty_name = department.get("name", "").strip() or "Noma'lum fakultet"
-#         faculty_code = department.get("code", "").strip() or "unknown"
+#         # Bog'liq jadvallar
+#         faculty   = self._get_or_create_faculty(item)
+#         direction = self._get_or_create_direction(item, faculty)
+#         group     = self._get_or_create_group(item, direction)
 #
-#         direction_name = specialty.get("name", "").strip() or "Noma'lum yo'nalish"
-#         direction_code = specialty.get("code", "").strip() or f"dir-{specialty.get('id', '0')}"
+#         # Tug'ilgan sana (unix timestamp → date)
+#         birthday = None
+#         bd_ts = item.get("birth_date")
+#         if bd_ts:
+#             try:
+#                 birthday = date.fromtimestamp(int(bd_ts))
+#             except Exception:
+#                 pass
 #
-#         group_name = group_data.get("name", "").strip() or f"group-{item.get('id')}"
-#         education_language = education_lang.get("name", "").strip() or "Noma'lum"
-#         education_code = education_lang.get("code", "").strip() or "unknown"
+#         gender  = GENDER_MAP.get((item.get("gender") or {}).get("code", ""), "boshqa")
+#         country = (item.get("country") or {}).get("name", "")
+#         course  = (item.get("level")   or {}).get("name", "")
+#         avg_gpa = item.get("avg_gpa") or None
+#         image_hemis = item.get("image_full") or item.get("image") or ""
+#         email   = (item.get("email") or "").strip()
 #
-#         first_name = (item.get("first_name") or "").strip()
-#         last_name = (item.get("second_name") or "").strip()
-#         third_name = (item.get("third_name") or "").strip()
-#
-#         gender = self._map_gender(gender_data.get("name"))
-#         birthday = self._parse_unix_date(item.get("birth_date")) or "Mavjud emas"
-#         avg_gpa = self._parse_decimal(item.get("avg_gpa"))
-#         course = level_data.get("name", "").strip() or "Noma'lum"
-#
-#         hemis_id = str(item.get("student_id_number") or item.get("id") or "")
-#
-#         # Faculty
-#         faculty, _ = Faculty.objects.get_or_create(
-#             code=faculty_code,
-#             defaults={"name": faculty_name}
-#         )
-#         if faculty.name != faculty_name:
-#             faculty.name = faculty_name
-#             faculty.save(update_fields=["name"])
-#
-#         # Direction
-#         direction, _ = Direction.objects.get_or_create(
-#             code=direction_code,
-#             defaults={"name": direction_name, "faculty": faculty}
-#         )
-#         direction_changed = False
-#         if direction.name != direction_name:
-#             direction.name = direction_name
-#             direction_changed = True
-#         if direction.faculty_id != faculty.id:
-#             direction.faculty = faculty
-#             direction_changed = True
-#         if direction_changed:
-#             direction.save()
-#
-#         # Group
-#         group_obj, _ = Group.objects.get_or_create(
-#             name=group_name,
-#             defaults={
-#                 "education_code": education_code,
-#                 "education_language": education_language,
-#                 "direction": direction,
-#             }
-#         )
-#         group_changed = False
-#         if group_obj.education_code != education_code:
-#             group_obj.education_code = education_code
-#             group_changed = True
-#         if group_obj.education_language != education_language:
-#             group_obj.education_language = education_language
-#             group_changed = True
-#         if group_obj.direction_id != direction.id:
-#             group_obj.direction = direction
-#             group_changed = True
-#         if group_changed:
-#             group_obj.save()
-#
-#         # Student
-#         student_defaults = {
-#             "first_name": first_name,
-#             "last_name": last_name,
-#             "third_name": third_name,
-#             "birthday": birthday,
-#             "gender": gender,
-#             "country": country_data.get("name"),
-#             "avg_gpa": avg_gpa,
-#             "course": course,
-#             "group": group_obj,
-#             "image": None,
-#             "image_hemis": image_hemis,
-#         }
-#
-#         student, created = Student.objects.update_or_create(
+#         student, is_created = Student.objects.update_or_create(
 #             hemis_id=hemis_id,
-#             defaults=student_defaults
+#             defaults=dict(
+#                 first_name  = (item.get("first_name")  or "").strip(),
+#                 last_name   = (item.get("second_name") or "").strip(),
+#                 third_name  = (item.get("third_name")  or "").strip(),
+#                 birthday    = birthday,
+#                 gender      = gender,
+#                 country     = country,
+#                 image_hemis = image_hemis,
+#                 avg_gpa     = avg_gpa,
+#                 course      = course,
+#                 email       = email,
+#                 group       = group,
+#             ),
 #         )
 #
-#         if self.save_images:
-#             self._save_student_images(student, item)
+#         # StudentDetail — yashash manzili
+#         self._save_detail(student, item)
 #
-#         # StudentDetail
+#         return "created" if is_created else "updated"
+#
+#     def _save_detail(self, student: Student, item: dict):
+#         pay_code = (item.get("paymentForm") or {}).get("code", "")
+#
 #         StudentDetail.objects.update_or_create(
 #             student=student,
-#             defaults={
-#                 "p_country": country_data.get("name"),
-#                 "p_region": province_data.get("name"),
-#                 "p_district": district_data.get("name"),
-#                 "t_country": country_data.get("name"),
-#                 "t_region": current_province_data.get("name"),
-#                 "t_district": current_district_data.get("name"),
-#                 "education_type": self._map_education_type(education_type_data.get("name")),
-#             }
+#             defaults=dict(
+#                 # Doimiy (ro'yxatdagi) manzil
+#                 p_country  = (item.get("country")   or {}).get("name", ""),
+#                 p_region   = (item.get("province")  or {}).get("name", ""),
+#                 p_district = (item.get("district")  or {}).get("name", ""),
+#                 # Hozirgi (faktik) manzil
+#                 t_country  = (item.get("country")          or {}).get("name", ""),
+#                 t_region   = (item.get("currentProvince")  or {}).get("name", ""),
+#                 t_district = (item.get("currentDistrict")  or {}).get("name", ""),
+#                 # To'lov turi
+#                 education_type = PAYMENT_MAP.get(pay_code, "nomalum"),
+#             ),
 #         )
 #
-#         return created, not created
+#     # ──────────────────────────────────────────────────
+#     #  PRIVATE: Faculty / Direction / Group
+#     # ──────────────────────────────────────────────────
 #
-#     def _parse_unix_date(self, timestamp):
-#         if not timestamp:
-#             return None
-#         try:
-#             return datetime.fromtimestamp(int(timestamp)).date()
-#         except Exception:
-#             return None
+#     def _get_or_create_faculty(self, item: dict) -> Faculty:
+#         dept = item.get("department") or {}
+#         name = (dept.get("name") or "Noma'lum fakultet")[:150]
+#         code = (dept.get("code") or "")[:30]
+#         faculty, _ = Faculty.objects.get_or_create(
+#             name=name,
+#             defaults={"code": code},
+#         )
+#         return faculty
 #
-#     def _parse_decimal(self, value):
-#         if value in [None, ""]:
-#             return None
-#         try:
-#             return Decimal(str(value))
-#         except Exception:
-#             return None
+#     def _get_or_create_direction(self, item: dict, faculty: Faculty) -> Direction:
+#         spec = item.get("specialty") or {}
+#         name = (spec.get("name") or "Noma'lum yo'nalish")[:150]
+#         code = str(spec.get("code") or "")[:10]
+#         direction, _ = Direction.objects.get_or_create(
+#             name=name,
+#             faculty=faculty,
+#             defaults={"code": code},
+#         )
+#         return direction
 #
-#     def _map_gender(self, gender_name):
-#         if not gender_name:
-#             return "erkak"
-#         gender_name = gender_name.lower()
-#         if "erkak" in gender_name:
-#             return "erkak"
-#         if "ayol" in gender_name:
-#             return "ayol"
-#         return "erkak"
+#     def _get_or_create_group(self, item: dict, direction: Direction) -> Group:
+#         grp  = item.get("group") or {}
+#         name = (grp.get("name") or "Noma'lum guruh")[:250]
+#         lang = (grp.get("educationLang") or {}).get("name", "")
+#         edu_code = str(grp.get("id") or "")[:20]
 #
-#     def _map_education_type(self, education_type_name):
-#         if not education_type_name:
-#             return "nomalum"
-#         val = education_type_name.lower()
-#         if "bakalavr" in val:
-#             return "bakalavr"
-#         if "magistr" in val:
-#             return "magistr"
-#         return "nomalum"
-#
-#     # ✅ To'g'rilandi: image_none → image, image_full_none → image_full
-#     def _save_student_images(self, student, item):
-#         image_url = item.get("image")
-#         image_full_url = item.get("image_full")
-#         changed = False
-#
-#         if image_url and not student.image:
-#             content = self._download_file(image_url)
-#             if content:
-#                 filename = self._build_filename(student.hemis_id, image_url)
-#                 student.image.save(filename, content, save=False)
-#                 changed = True
-#
-#         if image_full_url and not student.image_full:
-#             content = self._download_file(image_full_url)
-#             if content:
-#                 filename = self._build_filename(f"{student.hemis_id}_full", image_full_url)
-#                 student.image_full.save(filename, content, save=False)
-#                 changed = True
-#
-#         if changed:
-#             student.save()
-#
-#     def _download_file(self, url):
-#         try:
-#             response = self.session.get(url, timeout=self.timeout)  # ✅ session ishlatiladi
-#             response.raise_for_status()
-#             return ContentFile(response.content)
-#         except Exception as e:
-#             print(f"Rasm yuklashda xatolik: {url} -> {e}")
-#             return None
-#
-#     def _build_filename(self, base_name, url):
-#         ext = os.path.splitext(url)[1]
-#         if not ext:
-#             ext = ".jpg"
-#         return f"{base_name}{ext}"
+#         # Xorijiy talabalar + mahalliy talabalar bir xil guruh nomi bo'lsa
+#         # get_or_create avtomatik "bitta qiladi"
+#         group, _ = Group.objects.get_or_create(
+#             name=name,
+#             defaults={
+#                 "education_code":     edu_code,
+#                 "education_language": lang,
+#                 "direction":          direction,
+#             },
+#         )
+#         return group
 
 
 
 
-import os
-import time
-from datetime import datetime
-from decimal import Decimal
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-from django.core.files.base import ContentFile
+from datetime import date
+
 from django.db import transaction
-from .models import Faculty, Direction, Group, Student, StudentDetail
 
+from .models import (
+    Student, StudentDetail,
+    Faculty, Direction, Group,
+)
 
-# Xorijiy talabalar uchun birlashtiriladigan kalit so'zlar
-FOREIGN_FACULTY_KEYWORDS = [
-    'xorijiy talabalar',
-    'xalqaro talabalar',
-    'xalqaro tibbiyot',
-    'qo\'shma ta\'lim',
-    'international',
-]
+EDUCATION_TYPE_BAKALAVR = "11"
 
-MERGED_FACULTY_NAME = "Xalqaro tibbiyot fakulteti (Xorijiy talabalar)"
-MERGED_FACULTY_CODE = "362-113"
+GENDER_MAP = {
+    "11": "erkak",
+    "12": "ayol",
+}
+
+# ✅ 3 xil to'lov turi — API dan kelgan code ni tekshiring
+PAYMENT_MAP = {
+    "11": "grant",
+    "12": "kontrakt",
+    "13": "superkontrakt",  # ← API dan kelgan real codeni tekshiring
+}
 
 
 class HEMISStudentImportService:
 
-    def __init__(self, base_url, headers=None, timeout=50, save_images=False):
-        self.base_url = base_url
-        self.headers = headers or {}
-        self.timeout = timeout
+    def __init__(
+        self,
+        base_url: str,
+        headers: dict,
+        timeout: int = 20,
+        save_images: bool = False,
+    ):
+        self.base_url    = base_url.rstrip("/")
+        self.timeout     = timeout
         self.save_images = save_images
-        self.session = self._create_session()
 
-    def _create_session(self):
-        session = requests.Session()
-        retry = Retry(
-            total=3,
-            backoff_factor=2,
-            status_forcelist=[500, 502, 503, 504],
-        )
-        adapter = HTTPAdapter(max_retries=retry)
-        session.mount("https://", adapter)
-        session.mount("http://", adapter)
-        return session
+        self.session = requests.Session()
+        self.session.headers.update(headers)
+        self.session.headers.update({"Accept": "application/json"})
 
-    def _normalize_faculty(self, faculty_name, faculty_code):
-        """Xorijiy talabalar fakultetlarini bitta nom bilan birlashtiradi"""
-        name_lower = faculty_name.lower()
-        for keyword in FOREIGN_FACULTY_KEYWORDS:
-            if keyword in name_lower:
-                return MERGED_FACULTY_NAME, MERGED_FACULTY_CODE
-        return faculty_name, faculty_code
+    def run(self, start_page: int = 1, max_pages: int = 583) -> dict:
+        created   = 0
+        updated   = 0
+        last_page = start_page
 
-    def fetch_page(self, page=1):
-        try:
-            response = self.session.get(
-                self.base_url,
-                headers=self.headers,
-                params={"page": page},
-                timeout=self.timeout
-            )
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.ConnectTimeout:
-            print(f"Timeout xatosi: server javob bermadi (page={page})")
-            return None
-        except requests.exceptions.ConnectionError:
-            print(f"Ulanish xatosi: internet yoki server muammosi (page={page})")
-            return None
-        except requests.exceptions.RequestException as e:
-            print(f"So'rov xatosi (page={page}): {e}")
-            return None
+        for page in range(start_page, max_pages + 1):
+            items, real_page_count = self._fetch_page(page)
 
-    def run(self, start_page=1, max_pages=None):
-        page = start_page
-        created_count = 0
-        updated_count = 0
-        failed_pages = []
-
-        while True:
-            if max_pages and page > max_pages:
-                break
-
-            data = self.fetch_page(page=page)
-
-            if data is None:
-                print(f"Page {page} o'tkazib yuborildi, 10 sekund kutilmoqda...")
-                failed_pages.append(page)
-                time.sleep(10)
-                page += 1
+            if items is None:
                 continue
 
-            if not data.get("success"):
-                print(f"API xatolik qaytardi. page={page}, error={data.get('error')}")
-                break
-
-            items = data.get("data", {}).get("items", [])
-            if not items:
-                print(f"Page {page} da item yo'q. Import tugadi.")
-                break
-
-            print(f"Page {page}: {len(items)} ta student topildi")
-
             for item in items:
-                created, updated = self.save_student(item)
-                if created:
-                    created_count += 1
-                elif updated:
-                    updated_count += 1
+                edu_code = (item.get("educationType") or {}).get("code", "")
+                if edu_code != EDUCATION_TYPE_BAKALAVR:
+                    continue
 
-            page += 1
-            time.sleep(1)
+                result = self._save_student(item)
+                if result == "created":
+                    created += 1
+                elif result == "updated":
+                    updated += 1
 
-        print(f"Yakunlandi: {created_count} ta yangi, {updated_count} ta yangilandi.")
-        if failed_pages:
-            print(f"Muvaffaqiyatsiz sahifalar: {failed_pages}")
+            last_page = page
+
+            if real_page_count and page >= real_page_count:
+                break
 
         return {
-            "created": created_count,
-            "updated": updated_count,
-            "last_page": page - 1,
-            "failed_pages": failed_pages,
+            "created":   created,
+            "updated":   updated,
+            "last_page": last_page,
         }
+
+    def _fetch_page(self, page: int):
+        params = {"page": page, "limit": 20}
+        try:
+            resp = self.session.get(self.base_url, params=params, timeout=self.timeout)
+            resp.raise_for_status()
+            body = resp.json()
+        except Exception:
+            return None, None
+
+        if not body.get("success"):
+            return None, None
+
+        pagination = (body.get("data") or {}).get("pagination", {})
+        page_count = pagination.get("pageCount")
+        items      = (body.get("data") or {}).get("items", [])
+        return items, page_count
 
     @transaction.atomic
-    def save_student(self, item):
-        university = item.get("university") or {}
-        department = item.get("department") or {}
-        specialty = item.get("specialty") or {}
-        group_data = item.get("group") or {}
-        education_lang = group_data.get("educationLang") or {}
-        gender_data = item.get("gender") or {}
-        country_data = item.get("country") or {}
-        province_data = item.get("province") or {}
-        district_data = item.get("district") or {}
-        current_province_data = item.get("currentProvince") or {}
-        current_district_data = item.get("currentDistrict") or {}
-        education_type_data = item.get("educationType") or {}
-        level_data = item.get("level") or {}
-        image_hemis = item.get('image') or None
+    def _save_student(self, item: dict) -> str:
+        hemis_id = (item.get("student_id_number") or "").strip()
+        if not hemis_id:
+            return "skip"
 
-        faculty_name = department.get("name", "").strip() or "Noma'lum fakultet"
-        faculty_code = department.get("code", "").strip() or "unknown"
+        faculty   = self._get_or_create_faculty(item)
+        direction = self._get_or_create_direction(item, faculty)
+        group     = self._get_or_create_group(item, direction)
 
-        # ← xorijiy fakultetlarni birlashtirish
-        faculty_name, faculty_code = self._normalize_faculty(faculty_name, faculty_code)
+        birthday = None
+        bd_ts = item.get("birth_date")
+        if bd_ts:
+            try:
+                birthday = date.fromtimestamp(int(bd_ts))
+            except Exception:
+                pass
 
-        direction_name = specialty.get("name", "").strip() or "Noma'lum yo'nalish"
-        direction_code = specialty.get("code", "").strip() or f"dir-{specialty.get('id', '0')}"
+        gender      = GENDER_MAP.get((item.get("gender") or {}).get("code", ""), "boshqa")
+        country     = (item.get("country") or {}).get("name", "")
+        course      = (item.get("level")   or {}).get("name", "")
+        avg_gpa     = item.get("avg_gpa") or None
+        image_hemis = item.get("image_full") or item.get("image") or ""
+        email       = (item.get("email") or "").strip()
 
-        group_name = group_data.get("name", "").strip() or f"group-{item.get('id')}"
-        education_language = education_lang.get("name", "").strip() or "Noma'lum"
-        education_code = education_lang.get("code", "").strip() or "unknown"
-
-        first_name = (item.get("first_name") or "").strip()
-        last_name = (item.get("second_name") or "").strip()
-        third_name = (item.get("third_name") or "").strip()
-
-        gender = self._map_gender(gender_data.get("name"))
-        birthday = self._parse_unix_date(item.get("birth_date"))
-        avg_gpa = self._parse_decimal(item.get("avg_gpa"))
-        course = level_data.get("name", "").strip() or "Noma'lum"
-
-        hemis_id = str(item.get("student_id_number") or item.get("id") or "")
-
-        # Faculty
-        faculty, _ = Faculty.objects.get_or_create(
-            code=faculty_code,
-            defaults={"name": faculty_name}
-        )
-        if faculty.name != faculty_name:
-            faculty.name = faculty_name
-            faculty.save(update_fields=["name"])
-
-        # Direction
-        direction, _ = Direction.objects.get_or_create(
-            code=direction_code,
-            defaults={"name": direction_name, "faculty": faculty}
-        )
-        direction_changed = False
-        if direction.name != direction_name:
-            direction.name = direction_name
-            direction_changed = True
-        if direction.faculty_id != faculty.id:
-            direction.faculty = faculty
-            direction_changed = True
-        if direction_changed:
-            direction.save()
-
-        # Group
-        group_obj, _ = Group.objects.get_or_create(
-            name=group_name,
-            defaults={
-                "education_code": education_code,
-                "education_language": education_language,
-                "direction": direction,
-            }
-        )
-        group_changed = False
-        if group_obj.education_code != education_code:
-            group_obj.education_code = education_code
-            group_changed = True
-        if group_obj.education_language != education_language:
-            group_obj.education_language = education_language
-            group_changed = True
-        if group_obj.direction_id != direction.id:
-            group_obj.direction = direction
-            group_changed = True
-        if group_changed:
-            group_obj.save()
-
-        # Student
-        student_defaults = {
-            "first_name": first_name,
-            "last_name": last_name,
-            "third_name": third_name,
-            "birthday": birthday,
-            "gender": gender,
-            "country": country_data.get("name"),
-            "avg_gpa": avg_gpa,
-            "course": course,
-            "group": group_obj,
-            "image": None,
-            "image_hemis": image_hemis,
-        }
-
-        student, created = Student.objects.update_or_create(
+        student, is_created = Student.objects.update_or_create(
             hemis_id=hemis_id,
-            defaults=student_defaults
+            defaults=dict(
+                first_name  = (item.get("first_name")  or "").strip(),
+                last_name   = (item.get("second_name") or "").strip(),
+                third_name  = (item.get("third_name")  or "").strip(),
+                birthday    = birthday,
+                gender      = gender,
+                country     = country,
+                image_hemis = image_hemis,
+                avg_gpa     = avg_gpa,
+                course      = course,
+                email       = email,
+                group       = group,
+            ),
         )
 
-        if self.save_images:
-            self._save_student_images(student, item)
+        self._save_detail(student, item)
+        return "created" if is_created else "updated"
 
-        # StudentDetail
+    def _save_detail(self, student: Student, item: dict):
+        # ✅ API dan kelgan raw codeni log qilib tekshirish mumkin
+        pay_form = item.get("paymentForm") or {}
+        pay_code = pay_form.get("code", "")
+        pay_name = pay_form.get("name", "")  # ← debug uchun
+
+        # MAP da topilmasa — API dan kelgan nomni ishlatadi
+        education_type = PAYMENT_MAP.get(pay_code, pay_name or "nomalum")
+
         StudentDetail.objects.update_or_create(
             student=student,
-            defaults={
-                "p_country": country_data.get("name"),
-                "p_region": province_data.get("name"),
-                "p_district": district_data.get("name"),
-                "t_country": country_data.get("name"),
-                "t_region": current_province_data.get("name"),
-                "t_district": current_district_data.get("name"),
-                "education_type": self._map_education_type(education_type_data.get("name")),
-            }
+            defaults=dict(
+                p_country      = (item.get("country")          or {}).get("name", ""),
+                p_region       = (item.get("province")         or {}).get("name", ""),
+                p_district     = (item.get("district")         or {}).get("name", ""),
+                t_country      = (item.get("country")          or {}).get("name", ""),
+                t_region       = (item.get("currentProvince")  or {}).get("name", ""),
+                t_district     = (item.get("currentDistrict")  or {}).get("name", ""),
+                education_type = education_type,  # ✅
+            ),
         )
 
-        return created, not created
+    # ✅ code bo'yicha lookup — takroriy yaratilmaydi
+    def _get_or_create_faculty(self, item: dict) -> Faculty:
+        dept = item.get("department") or {}
+        name = (dept.get("name") or "Noma'lum fakultet")[:150]
+        code = (dept.get("code") or "")[:30]
 
-    def _parse_unix_date(self, timestamp):
-        if not timestamp:
-            return None
-        try:
-            return datetime.fromtimestamp(int(timestamp)).date()
-        except Exception:
-            return None
+        faculty, _ = Faculty.objects.get_or_create(
+            code=code,       # ← asosiy kalit
+            defaults={"name": name},
+        )
+        return faculty
 
-    def _parse_decimal(self, value):
-        if value in [None, ""]:
-            return None
-        try:
-            return Decimal(str(value))
-        except Exception:
-            return None
+    # ✅ code bo'yicha lookup — takroriy yaratilmaydi
+    def _get_or_create_direction(self, item: dict, faculty: Faculty) -> Direction:
+        spec = item.get("specialty") or {}
+        name = (spec.get("name") or "Noma'lum yo'nalish")[:150]
+        code = str(spec.get("code") or "")[:10]
 
-    def _map_gender(self, gender_name):
-        if not gender_name:
-            return "erkak"
-        gender_name = gender_name.lower()
-        if "erkak" in gender_name:
-            return "erkak"
-        if "ayol" in gender_name:
-            return "ayol"
-        return "erkak"
+        direction, _ = Direction.objects.get_or_create(
+            code=code,       # ← asosiy kalit
+            faculty=faculty,
+            defaults={"name": name},
+        )
+        return direction
 
-    def _map_education_type(self, education_type_name):
-        if not education_type_name:
-            return "nomalum"
-        val = education_type_name.lower()
-        if "bakalavr" in val:
-            return "bakalavr"
-        if "magistr" in val:
-            return "magistr"
-        return "nomalum"
+    def _get_or_create_group(self, item: dict, direction: Direction) -> Group:
+        grp      = item.get("group") or {}
+        name     = (grp.get("name") or "Noma'lum guruh")[:250]
+        lang     = (grp.get("educationLang") or {}).get("name", "")
+        edu_code = str(grp.get("id") or "")[:20]
 
-    def _save_student_images(self, student, item):
-        image_url = item.get("image")
-        image_full_url = item.get("image_full")
-        changed = False
-
-        if image_url and not student.image:
-            content = self._download_file(image_url)
-            if content:
-                filename = self._build_filename(student.hemis_id, image_url)
-                student.image.save(filename, content, save=False)
-                changed = True
-
-        if image_full_url and not student.image_full:
-            content = self._download_file(image_full_url)
-            if content:
-                filename = self._build_filename(f"{student.hemis_id}_full", image_full_url)
-                student.image_full.save(filename, content, save=False)
-                changed = True
-
-        if changed:
-            student.save()
-
-    def _download_file(self, url):
-        try:
-            response = self.session.get(url, timeout=self.timeout)
-            response.raise_for_status()
-            return ContentFile(response.content)
-        except Exception as e:
-            print(f"Rasm yuklashda xatolik: {url} -> {e}")
-            return None
-
-    def _build_filename(self, base_name, url):
-        ext = os.path.splitext(url)[1]
-        if not ext:
-            ext = ".jpg"
-        return f"{base_name}{ext}"
+        group, _ = Group.objects.get_or_create(
+            name=name,
+            defaults={
+                "education_code":     edu_code,
+                "education_language": lang,
+                "direction":          direction,
+            },
+        )
+        return group

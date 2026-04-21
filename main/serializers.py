@@ -271,77 +271,239 @@ class Roleserializer(serializers.ModelSerializer):
         model = Role
         fields = ('id','name',)
 
-# Dekan ushun serializer
-class FacultyDekanSerializer(serializers.ModelSerializer):
-    directions = serializers.SerializerMethodField()
-
+class Facultyserializer(serializers.ModelSerializer):
     class Meta:
         model = Faculty
-        fields = ['id', 'name', 'code', 'directions']
+        fields = ['id','name','code','created_at']
 
-    def get_directions(self, obj):
-        directions = obj.directions.all()
-        return DirectionDekanSerializer(directions, many=True).data
-
-class DirectionDekanSerializer(serializers.ModelSerializer):
-
+class Directionserializer(serializers.ModelSerializer):
     class Meta:
         model = Direction
-        fields = ['id', 'name', 'code', ]
+        fields = ['id','name','code']
+
+class Groupserializer(serializers.ModelSerializer):
+    class Meta:
+        model = Group
+        fields = ['id','name','education_code','education_language']
+
+class StudentSerializer1(serializers.ModelSerializer):
+    group = Groupserializer()
+    class Meta:
+        model = Student
+        fields = [
+            'id',
+            'first_name',
+            'last_name',
+            'third_name',
+            'birthday',
+            'gender',
+            'country',
+            'image',
+            'image_hemis',
+            'avg_gpa',
+            'course',
+            'hemis_id',
+            'email',
+            'phone',
+            'group'
+        ]
 
 
-    def get_student_count(self, obj):
-        return obj.students.count()
 
-class StudentDekanSerializer(serializers.ModelSerializer):
-    group_name = serializers.CharField(source='group.name', read_only=True)
-    direction_name = serializers.CharField(source='group.direction.name', read_only=True)
+
+
+class StudentDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StudentDetail
+        fields = [
+            'id', 'student',
+            'p_country', 'p_region', 'p_district',
+            't_country', 't_region', 't_district',
+            't_latitude', 't_longitude',
+            'is_orphanage_student', 'is_military_family',
+            'education_type', 'is_pregnant',
+            'behavior_issues', 'is_adult',
+            'created_at',
+        ]
+
+
+class AchievementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Achievement
+        fields = [
+            'id', 'student',
+            'name', 'date', 'file',
+            'created_at',
+        ]
+
+
+class HealthInfoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HealthInfo
+        fields = [
+            'id', 'student',
+            'name', 'disability', 'health_status',
+            'disability_status', 'file', 'date',
+            'created_at',
+        ]
+
+
+class LanguageInfoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LanguageInfo
+        fields = [
+            'id', 'student',
+            'name', 'level', 'file', 'status',
+            'created_at',
+        ]
+
+
+class SocialLinkSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SocialLink
+        fields = [
+            'id', 'student',
+            'name', 'urls', 'status',
+            'created_at',
+        ]
+
+
+class ReprimandSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Reprimand
+        fields = [
+            'id', 'student',
+            'date', 'title', 'file',
+            'created_at',
+        ]
+
+
+class FamilySocialStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FamilySocialStatus
+        fields = [
+            'id', 'student',
+            'marital_status', 'is_orphan',
+            'guardian_person', 'guardian_full_name',
+            'guardian_phone', 'guardian_description',
+            'is_crime_prone', 'official_employment',
+            'created_at',
+        ]
+
+
+class FamilyMemberSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FamilyMember
+        fields = [
+            'id', 'student',
+            'first_name', 'last_name', 'third_name',
+            'address', 'work_place', 'unofficial_employment',
+            'created_at',
+        ]
+
+
+class CategoryInterestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CategoryInterest
+        fields = [
+            'id', 'name', 'created_at',
+        ]
+
+
+class InterestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Interest
+        fields = [
+            'id', 'student', 'category',
+            'name', 'created_at',
+        ]
+
+
+class SocialRegistrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SocialRegistry
+        fields = [
+            'id', 'student',
+            'status', 'file',
+            'created_at',
+        ]
+
+
+class DormitorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Dormitory
+        fields = [
+            'id', 'student',
+            'status', 'dormitory_name', 'building_name',
+            'building_phone', 'floor', 'residence_type',
+            'address', 'created_at',
+        ]
+
+
+class GiftedSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Gifted
+        fields = [
+            'id', 'student',
+            'name', 'status', 'file',
+            'created_at',
+        ]
+
+
+class ProtectionOrderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProtectionOrder
+        fields = [
+            'id', 'student',
+            'status', 'file',
+            'created_at',
+        ]
+
+
+class StudentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Student
+        fields = [
+            'id', 'group',
+            'first_name', 'last_name', 'third_name',
+            'birthday', 'gender', 'country',
+            'image', 'image_hemis',
+            'avg_gpa', 'course',
+            'hemis_id', 'email', 'phone',
+        ]
+
+
+class StudentFullSerializer(serializers.ModelSerializer):
+    details              = StudentDetailSerializer(many=True, read_only=True)
+    achievements         = AchievementSerializer(many=True, read_only=True)
+    health_info          = HealthInfoSerializer(many=True, read_only=True)
+    language_info        = LanguageInfoSerializer(many=True, read_only=True)
+    social_links         = SocialLinkSerializer(many=True, read_only=True)
+    reprimands           = ReprimandSerializer(many=True, read_only=True)
+    family_social_status = FamilySocialStatusSerializer(many=True, read_only=True)
+    family_members       = FamilyMemberSerializer(many=True, read_only=True)
+    interests            = InterestSerializer(many=True, read_only=True)
+    social_registries    = SocialRegistrySerializer(many=True, read_only=True)
+    dormitories          = DormitorySerializer(many=True, read_only=True)
+    gifteds              = GiftedSerializer(many=True, read_only=True)
+    protection_orders    = ProtectionOrderSerializer(many=True, read_only=True)
 
     class Meta:
         model = Student
         fields = [
-            'id', 'first_name', 'last_name', 'third_name',
-            'hemis_id', 'gender', 'avg_gpa', 'course',
-            'group_name', 'direction_name', 'image_hemis'
+            'id', 'group',
+            'first_name', 'last_name', 'third_name',
+            'birthday', 'gender', 'country',
+            'image', 'image_hemis',
+            'avg_gpa', 'course',
+            'hemis_id', 'email', 'phone',
+            # related
+            'details', 'achievements', 'health_info',
+            'language_info', 'social_links', 'reprimands',
+            'family_social_status', 'family_members',
+            'interests', 'social_registries', 'dormitories',
+            'gifteds', 'protection_orders',
         ]
-
-# Dekan ushun serializer
-class Directionserializer(serializers.ModelSerializer):
-    class Meta:
-        model = Direction
-        fields = ['id', 'name', 'code']
-
-class Facultyserializer(serializers.ModelSerializer):
-    class Meta:
-        model = Faculty
-        fields = ['id', 'name', 'code',]
-
-class Groupserializerbygroups(serializers.ModelSerializer):
-    class Meta:
-        model = Group
-        fields = ['id', 'name', 'education_language']
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
