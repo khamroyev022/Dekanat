@@ -403,118 +403,82 @@ class GroupsGetApiView(APIView):
                 'message': "Ruxsat yo'q",
                 'data': None
             }, status=status.HTTP_403_FORBIDDEN)
+PREFETCH_FIELDS = [
+    'achievements', 'health_info', 'language_info',
+    'social_links', 'reprimands', 'family_social_status',
+    'family_members', 'interests', 'social_registries',
+    'dormitories', 'gifteds', 'protection_orders',
+]
 
-class StudentGetApiView(APIView):
+
+class StudentCRUD(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         user = request.user
+        student_id = request.query_params.get('student_id')
         group_id = request.query_params.get('group_id')
 
-        if not group_id:
-            return Response({
-                'success': False,
-                'message': 'group_id parametri kiritilmadi',
-                'data': None,
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            group = Group.objects.get(id=group_id)
-        except Group.DoesNotExist:
-            return Response({
-                'success': False,
-                'message': "Guruh topilmadi",
-                'data': None,
-            }, status=status.HTTP_404_NOT_FOUND)
-
-        if user.role.id == 1:
-            students = Student.objects.filter(group=group)
-            ser = StudentSerializer1(students, many=True)
-
-            return Response({
-                'success': True,
-                'message': "Studentlar ro'yxati",
-                'group': group.name,
-                'data': ser.data
-            }, status=status.HTTP_200_OK)
-
-        elif user.role.id in [2, 3, 4]:
-            if not user.faculty:
-                return Response({
-                    'success': False,
-                    'message': "Sizga biriktirilgan fakultet yo'q",
-                    'data': None
-                }, status=status.HTTP_404_NOT_FOUND)
-
-            if group.direction.faculty != user.faculty:
-                return Response({
-                    'success': False,
-                    'message': "Bu guruh sizning fakultetingizga tegishli emas",
-                    'data': None
-                }, status=status.HTTP_403_FORBIDDEN)
-
-            students = Student.objects.filter(group=group)
-            ser = StudentSerializer1(students, many=True)
-
-            return Response({
-                'success': True,
-                'message': "Studentlar ro'yxati",
-                'group': group.name,
-                'data': ser.data
-            }, status=status.HTTP_200_OK)
-
-        else:
-            return Response({
-                'success': False,
-                'message': "Ruxsat yo'q",
-                'data': None
-            }, status=status.HTTP_403_FORBIDDEN)
-
-
-
-
-def ok(message, data, code=status.HTTP_200_OK):
-    return Response({
-        'success': True,
-        'message': message,
-        'data': data
-    }, status=code)
-
-
-def fail(message, code=status.HTTP_400_BAD_REQUEST):
-    return Response({
-        'success': False,
-        'message': message,
-        'data': None
-    }, status=code)
-
-
-def get_student(student_id):
-    try:
-        return Student.objects.get(id=student_id), None
-    except Student.DoesNotExist:
-        return None, fail("Student topilmadi", status.HTTP_404_NOT_FOUND)
-
-
-
-class StudentCRUD(APIView):
-    permission_classes = [AllowAny]
-
-    def get(self, request):
-        student_id = request.query_params.get('student_id')
-        group_id   = request.query_params.get('group_id')
-
+        # --- Bitta student ---
         if student_id:
-            student, err = get_student(student_id)
-            if err:
-                return err
+            try:
+                student = Student.objects.prefetch_related(
+                    'details', *PREFETCH_FIELDS
+                ).get(id=student_id)
+            except Student.DoesNotExist:
+                return fail("Student topilmadi", status.HTTP_404_NOT_FOUND)
+
+            # Rol tekshiruvi (2,3,4 uchun fakultet cheki)
+            if user.role.id in [2, 3, 4]:
+                if not user.faculty:
+                    return fail("Sizga biriktirilgan fakultet yo'q", status.HTTP_404_NOT_FOUND)
+                if student.group.direction.faculty != user.faculty:
+                    return fail("Bu student sizning fakultetingizga tegishli emas", status.HTTP_403_FORBIDDEN)
+            elif user.role.id != 1:
+                return fail("Ruxsat yo'q", status.HTTP_403_FORBIDDEN)
+
             ser = StudentFullSerializer(student)
             return ok("Student ma'lumoti", ser.data)
 
+        # --- Guruh bo'yicha studentlar ---
         if group_id:
-            students = Student.objects.filter(group_id=group_id)
-        else:
-            students = Student.objects.all()
+            try:
+                group = Group.objects.get(id=group_id)
+            except Group.DoesNotExist:
+                return fail("Guruh topilmadi", status.HTTP_404_NOT_FOUND)
+
+            if user.role.id in [2, 3, 4]:
+                if not user.faculty:
+                    return fail("Sizga biriktirilgan fakultet yo'q", status.HTTP_404_NOT_FOUND)
+                if group.direction.faculty != user.faculty:
+                    return fail("Bu guruh sizning fakultetingizga tegishli emas", status.HTTP_403_FORBIDDEN)
+            elif user.role.id != 1:
+                return fail("Ruxsat yo'q", status.HTTP_403_FORBIDDEN)
+
+            students = Student.objects.filter(
+                group=group
+            ).prefetch_related(*PREFETCH_FIELDS)
+
+            paginator = StudentPagination()
+            page = paginator.paginate_queryset(students, request)
+            if page is not None:
+                ser = StudentSerializer(page, many=True)
+                return paginator.get_paginated_response(ser.data)
+
+            ser = StudentSerializer(students, many=True)
+            return ok(f"Studentlar ro'yxati ({group.name})", ser.data)
+
+        # --- Barcha studentlar (faqat admin) ---
+        if user.role.id != 1:
+            return fail("Ruxsat yo'q", status.HTTP_403_FORBIDDEN)
+
+        students = Student.objects.all().prefetch_related(*PREFETCH_FIELDS)
+
+        paginator = StudentPagination()
+        page = paginator.paginate_queryset(students, request)
+        if page is not None:
+            ser = StudentSerializer(page, many=True)
+            return paginator.get_paginated_response(ser.data)
 
         ser = StudentSerializer(students, many=True)
         return ok("Studentlar ro'yxati", ser.data)
@@ -549,6 +513,20 @@ class StudentCRUD(APIView):
         student.delete()
         return ok("Student o'chirildi", None)
 
+
+# --- Helper funksiyalar ---
+
+def ok(message, data, code=status.HTTP_200_OK):
+    return Response({'success': True, 'message': message, 'data': data}, status=code)
+
+def fail(message, code=status.HTTP_400_BAD_REQUEST):
+    return Response({'success': False, 'message': message, 'data': None}, status=code)
+
+def get_student(student_id):
+    try:
+        return Student.objects.get(id=student_id), None
+    except Student.DoesNotExist:
+        return None, fail("Student topilmadi", status.HTTP_404_NOT_FOUND)
 
 class BaseCRUD(APIView):
     permission_classes = [AllowAny]

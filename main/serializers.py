@@ -462,7 +462,17 @@ class ProtectionOrderSerializer(serializers.ModelSerializer):
         ]
 
 
+PREFETCH_FIELDS = [
+    'achievements', 'health_info', 'language_info',
+    'social_links', 'reprimands', 'family_social_status',
+    'family_members', 'interests', 'social_registries',
+    'dormitories', 'gifteds', 'protection_orders',
+]
+
+
 class StudentSerializer(serializers.ModelSerializer):
+    filled = serializers.SerializerMethodField()  # ✅
+
     class Meta:
         model = Student
         fields = [
@@ -472,10 +482,16 @@ class StudentSerializer(serializers.ModelSerializer):
             'image', 'image_hemis',
             'avg_gpa', 'course',
             'hemis_id', 'email', 'phone',
+            'filled',  # ✅
         ]
+
+    def get_filled(self, obj):
+        from .utils import calculate_student_completion
+        return calculate_student_completion(obj)
 
 
 class StudentFullSerializer(serializers.ModelSerializer):
+    filled               = serializers.SerializerMethodField()  # ✅
     details              = StudentDetailSerializer(many=True, read_only=True)
     achievements         = AchievementSerializer(many=True, read_only=True)
     health_info          = HealthInfoSerializer(many=True, read_only=True)
@@ -499,7 +515,7 @@ class StudentFullSerializer(serializers.ModelSerializer):
             'image', 'image_hemis',
             'avg_gpa', 'course',
             'hemis_id', 'email', 'phone',
-            # related
+            'filled',  # ✅
             'details', 'achievements', 'health_info',
             'language_info', 'social_links', 'reprimands',
             'family_social_status', 'family_members',
@@ -507,6 +523,9 @@ class StudentFullSerializer(serializers.ModelSerializer):
             'gifteds', 'protection_orders',
         ]
 
+    def get_filled(self, obj):
+        from .utils import calculate_student_completion
+        return calculate_student_completion(obj)
 
 
 

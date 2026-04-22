@@ -13,10 +13,9 @@ urlpatterns = [
     path('faculties/', FacultyGEtApipview.as_view(), name='faculties'),
     path('faculty/directions/', DirectionGETApiview.as_view(), name='directions'),
     path('faculty/direction/groups/',GroupsGetApiView.as_view(), name='groups'),
-    path('faculty/direction/group/students/', StudentGetApiView.as_view()),
-    path('faculty/direction/group/student/',StudentCRUD.as_view()),
+    path('students/',StudentCRUD.as_view()),
     path('faculty/direction/group/student/details/',StudentDetailCRUD.as_view()),
-    path('faculty/direction/group/student/achievements/',       AchievementCRUD.as_view()),
+    path('faculty/direction/group/student/achievement/',       AchievementCRUD.as_view()),
     path('faculty/direction/group/student/health-info/',        HealthInfoCRUD.as_view()),
     path('faculty/direction/group/student/language-info/',      LanguageInfoCRUD.as_view()),
     path('faculty/direction/group/student/social-links/',       SocialLinkCRUD.as_view()),
@@ -29,6 +28,7 @@ urlpatterns = [
     path('faculty/direction/group/student/gifted/',             GiftedCRUD.as_view()),
     path('faculty/direction/group/student/protection-order/',   ProtectionOrderCRUD.as_view()),
 ]+ router.urls
+
 
 
 
