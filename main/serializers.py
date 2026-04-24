@@ -1,10 +1,29 @@
 from rest_framework import serializers
 from .models import *
+from .models import (
+    Achievement, HealthInfo, LanguageInfo, SocialLink,
+    Reprimand, FamilySocialStatus, FamilyMember,
+    CategoryInterest, Interest, SocialRegistry,
+    Dormitory, Gifted, ProtectionOrder
+)
+
+class FileUrlMixin:
+
+    def get_file_url(self, obj, field_name='file'):
+        file = getattr(obj, field_name, None)
+        if file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(file.url)
+            return file.url
+        return None
+
 
 class GroupLoginSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
         fields = ('id', 'name', 'education_code', 'education_language')
+
 
 class LoginSerializer(serializers.ModelSerializer):
     tutor_groups = GroupLoginSerializer(many=True, read_only=True)
@@ -13,21 +32,12 @@ class LoginSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
         fields = (
-            'id',
-            'first_name',
-            'last_name',
-            'email',
-            'birthday',
-            'gender',
-            'image',
-            'address',
-            'nationality',
-            'passport_seria',
-            'phone_number',
-            'workplace',
-            'role',
-            'tutor_groups',
+            'id', 'first_name', 'last_name', 'email',
+            'birthday', 'gender', 'image', 'address',
+            'nationality', 'passport_seria', 'phone_number',
+            'workplace', 'role', 'tutor_groups',
         )
+
 
 class CreateUserSerializer(serializers.ModelSerializer):
     group_ids = serializers.ListField(
@@ -47,26 +57,12 @@ class CreateUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
         fields = [
-            'id',
-            'username',
-            'password',
-            'first_name',
-            'last_name',
-            'third_name',
-            'email',
-            'birthday',
-            'gender',
-            'image',
-            'address',
-            'nationality',
-            'passport_seria',
-            'phone_number',
-            'workplace',
-            'faculty',
-            'role',
-            'role_name',
-            'groups',
-            'group_ids',
+            'id', 'username', 'password',
+            'first_name', 'last_name', 'third_name',
+            'email', 'birthday', 'gender', 'image',
+            'address', 'nationality', 'passport_seria',
+            'phone_number', 'workplace', 'faculty',
+            'role', 'role_name', 'groups', 'group_ids',
             'created_at',
         ]
         extra_kwargs = {
@@ -126,32 +122,88 @@ class CreateUserSerializer(serializers.ModelSerializer):
 
         return instance
 
+
+
 class TutorGroupSerializer(serializers.ModelSerializer):
     faculty_name = serializers.CharField(source='direction.faculty.name', read_only=True)
 
     class Meta:
         model = Group
-        fields = (
-            'id',
-            'name',
-            'education_code',
-            'education_language',
-            'faculty_name',
-        )
+        fields = ('id', 'name', 'education_code', 'education_language', 'faculty_name')
+
 
 class DirectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Direction
         fields = '__all__'
 
+
 class GroupSerializer(serializers.ModelSerializer):
-    direction = DirectionSerializer
+
     class Meta:
         model = Group
-        fields = ('id', 'name','education_language')
+        fields = ('id', 'name', 'education_language')
+
+
+class Roleserializer(serializers.ModelSerializer):
+    class Meta:
+        model = Role
+        fields = ['id', 'name']
+
+
+class Facultyserializer(serializers.ModelSerializer):
+    class Meta:
+        model = Faculty
+        fields = ['id', 'name', 'code', 'created_at']
+
+
+class Directionserializer(serializers.ModelSerializer):
+    class Meta:
+        model = Direction
+        fields = ['id', 'name', 'code']
+
+
+class Groupserializer(serializers.ModelSerializer):
+    class Meta:
+        model = Group
+        fields = ['id', 'name', 'education_code', 'education_language']
+
+
+# ─────────────────────────────────────────────
+# STUDENT SERIALIZERS
+# ─────────────────────────────────────────────
+class StudentDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StudentDetail
+        fields = [
+            'id', 'student',
+            'p_country', 'p_region', 'p_district',
+            't_country', 't_region', 't_district',
+            't_latitude', 't_longitude',
+            'is_orphanage_student', 'is_military_family',
+            'education_type', 'is_pregnant',
+            'behavior_issues', 'is_adult','pnfl',
+            'created_at',
+        ]
+
+
+class StudentSerializer1(serializers.ModelSerializer):
+    group = Groupserializer(read_only=True)
+
+    class Meta:
+        model = Student
+        fields = [
+            'id', 'first_name', 'last_name', 'third_name',
+            'birthday', 'gender', 'country',
+            'image', 'image_hemis',
+            'avg_gpa', 'course', 'hemis_id',
+            'email', 'phone', 'group','pnfl'
+        ]
+
 
 class StudentSerializer(serializers.ModelSerializer):
-    group_name = serializers.CharField(source='group.name', read_only=True)  # ← to'g'rilandi
+    group_name = serializers.CharField(source='group.name', read_only=True)
+    filled = serializers.SerializerMethodField()
 
     p_country = serializers.CharField(max_length=50, required=False, allow_blank=True)
     p_region = serializers.CharField(max_length=50, required=False, allow_blank=True)
@@ -171,40 +223,27 @@ class StudentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Student
         fields = [
-            'id',
-            'first_name',
-            'last_name',
-            'third_name',
-            'birthday',
-            'gender',
-            'country',
-            'image',
-            'image_hemis',
-            'avg_gpa',
-            'course',
-            'hemis_id',
-            'email',
-            'phone',
-            'group',  # ← POST da id yuborish uchun
-            'group_name',  # ← GET da nom ko'rish uchun
-            'p_country',
-            'p_region',
-            'p_district',
-            't_country',
-            't_region',
-            't_district',
-            't_latitude',
-            't_longitude',
-            'is_orphanage_student',
-            'is_military_family',
-            'education_type',
-            'is_pregnant',
-            'behavior_issues',
-            'is_adult',
+            'id', 'first_name', 'last_name', 'third_name',
+            'birthday', 'gender', 'country',
+            'image', 'image_hemis',
+            'avg_gpa', 'course', 'hemis_id',
+            'email', 'phone',
+            'group', 'group_name',
+            'filled',
+            'p_country', 'p_region', 'p_district',
+            't_country', 't_region', 't_district',
+            't_latitude', 't_longitude',
+            'is_orphanage_student', 'is_military_family',
+            'education_type', 'is_pregnant',
+            'behavior_issues', 'is_adult',
         ]
         extra_kwargs = {
             'group': {'write_only': True},
         }
+
+    def get_filled(self, obj):
+        from .utils import calculate_student_completion
+        return calculate_student_completion(obj)
 
     def create(self, validated_data):
         detail_fields = [
@@ -266,126 +305,69 @@ class StudentSerializer(serializers.ModelSerializer):
             data['is_adult'] = detail.is_adult
         return data
 
-class Roleserializer(serializers.ModelSerializer):
-    class Meta:
-        model = Role
-        fields = ('id','name',)
 
-class Facultyserializer(serializers.ModelSerializer):
-    class Meta:
-        model = Faculty
-        fields = ['id','name','code','created_at']
-
-class Directionserializer(serializers.ModelSerializer):
-    class Meta:
-        model = Direction
-        fields = ['id','name','code']
-
-class Groupserializer(serializers.ModelSerializer):
-    class Meta:
-        model = Group
-        fields = ['id','name','education_code','education_language']
-
-class StudentSerializer1(serializers.ModelSerializer):
-    group = Groupserializer()
-    class Meta:
-        model = Student
-        fields = [
-            'id',
-            'first_name',
-            'last_name',
-            'third_name',
-            'birthday',
-            'gender',
-            'country',
-            'image',
-            'image_hemis',
-            'avg_gpa',
-            'course',
-            'hemis_id',
-            'email',
-            'phone',
-            'group'
-        ]
-
-class Roleserializer(serializers.ModelSerializer):
-    class Meta:
-        model = Role
-        fields = ['id','name',]
-
-
-
-class StudentDetailSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = StudentDetail
-        fields = [
-            'id', 'student',
-            'p_country', 'p_region', 'p_district',
-            't_country', 't_region', 't_district',
-            't_latitude', 't_longitude',
-            'is_orphanage_student', 'is_military_family',
-            'education_type', 'is_pregnant',
-            'behavior_issues', 'is_adult',
-            'created_at',
-        ]
-
-class AchievementSerializer(serializers.ModelSerializer):
+# ─────────────────────────────────────────────
+# FILE LI SERIALIZERS  (to_representation orqali)
+# ─────────────────────────────────────────────
+class AchievementSerializer(FileUrlMixin, serializers.ModelSerializer):
     class Meta:
         model = Achievement
-        fields = [
-            'id', 'student',
-            'name', 'date', 'file',
-            'created_at',
-        ]
+        fields = ['id', 'student', 'name', 'date', 'file', 'created_at']
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        rep['file'] = self.get_file_url(instance)
+        return rep
 
 
-class HealthInfoSerializer(serializers.ModelSerializer):
+class HealthInfoSerializer(FileUrlMixin, serializers.ModelSerializer):
     class Meta:
         model = HealthInfo
         fields = [
-            'id', 'student',
-            'name', 'disability', 'health_status',
-            'disability_status', 'file', 'date',
-            'created_at',
+            'id', 'student', 'name', 'disability',
+            'health_status', 'disability_status',
+            'file', 'date', 'created_at',
         ]
 
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        rep['file'] = self.get_file_url(instance)
+        return rep
 
-class LanguageInfoSerializer(serializers.ModelSerializer):
+
+class LanguageInfoSerializer(FileUrlMixin, serializers.ModelSerializer):
     class Meta:
         model = LanguageInfo
-        fields = [
-            'id', 'student',
-            'name', 'level', 'file', 'status',
-            'created_at',
-        ]
+        fields = ['id', 'student', 'name', 'level', 'file', 'status', 'created_at']
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        rep['file'] = self.get_file_url(instance)
+        return rep
 
 
 class SocialLinkSerializer(serializers.ModelSerializer):
     class Meta:
         model = SocialLink
-        fields = [
-            'id', 'student',
-            'name', 'urls', 'status',
-            'created_at',
-        ]
+        fields = ['id', 'student', 'name', 'urls', 'status', 'created_at']
 
 
-class ReprimandSerializer(serializers.ModelSerializer):
+class ReprimandSerializer(FileUrlMixin, serializers.ModelSerializer):
     class Meta:
         model = Reprimand
-        fields = [
-            'id', 'student',
-            'date', 'title', 'file',
-            'created_at',
-        ]
+        fields = ['id', 'date', 'title', 'file', 'status', 'created_at']
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        rep['file'] = self.get_file_url(instance)
+        return rep
 
 
 class FamilySocialStatusSerializer(serializers.ModelSerializer):
     class Meta:
         model = FamilySocialStatus
         fields = [
-            'id', 'student',
-            'marital_status', 'is_orphan',
+            'id', 'student', 'marital_status', 'is_orphan',
             'guardian_person', 'guardian_full_name',
             'guardian_phone', 'guardian_description',
             'is_crime_prone', 'official_employment',
@@ -397,71 +379,100 @@ class FamilyMemberSerializer(serializers.ModelSerializer):
     class Meta:
         model = FamilyMember
         fields = [
-            'id', 'student',
-            'first_name', 'last_name', 'third_name',
-            'address', 'work_place', 'unofficial_employment',
-            'created_at',
+            'id', 'student', 'first_name', 'last_name',
+            'third_name', 'address', 'work_place',
+            'unofficial_employment', 'created_at',
         ]
 
 
 class CategoryInterestSerializer(serializers.ModelSerializer):
     class Meta:
         model = CategoryInterest
-        fields = [
-            'id', 'name', 'created_at',
-        ]
+        fields = ['id', 'name', 'created_at']
 
 
 class InterestSerializer(serializers.ModelSerializer):
     class Meta:
         model = Interest
-        fields = [
-            'id', 'student', 'category',
-            'name', 'created_at',
-        ]
+        fields = ['id', 'student', 'category', 'name', 'created_at']
 
 
-class SocialRegistrySerializer(serializers.ModelSerializer):
+class SocialRegistrySerializer(FileUrlMixin, serializers.ModelSerializer):
     class Meta:
         model = SocialRegistry
-        fields = [
-            'id', 'student',
-            'status', 'file',
-            'created_at',
-        ]
+        fields = ['id', 'student', 'status', 'file', 'created_at']
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        rep['file'] = self.get_file_url(instance)
+        return rep
 
 
 class DormitorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Dormitory
-        fields = [
-            'id', 'student',
-            'status', 'dormitory_name', 'building_name',
-            'building_phone', 'floor', 'residence_type',
-            'address', 'created_at',
-        ]
+        fields = (
+            'id', 'status', 'dormitory_name', 'building',
+            'floor', 'room', 'residence_type',
+            'address', 'created_at'
+        )
+        read_only_fields = ['student', 'created_at']
+
+    def validate(self, data):
+        status = data.get('status', getattr(self.instance, 'status', None))
+
+        if status is None:
+            raise serializers.ValidationError("status majburiy")
+
+        if status:
+            errors = {}
+            if not data.get('dormitory_name'):
+                errors['dormitory_name'] = "TTJ nomi majburiy"
+            if not data.get('building'):
+                errors['building'] = "Bino majburiy"
+            if not data.get('floor'):
+                errors['floor'] = "Qavat majburiy"
+            if not data.get('room'):
+                errors['room'] = "Xona majburiy"
+            if errors:
+                raise serializers.ValidationError(errors)
+        else:
+            errors = {}
+            if not data.get('residence_type'):
+                errors['residence_type'] = "Turar joy turi majburiy"
+            if not data.get('address'):
+                errors['address'] = "Manzil majburiy"
+            if errors:
+                raise serializers.ValidationError(errors)
+
+        return data
 
 
-class GiftedSerializer(serializers.ModelSerializer):
+class GiftedSerializer(FileUrlMixin, serializers.ModelSerializer):
     class Meta:
         model = Gifted
-        fields = [
-            'id', 'student',
-            'name', 'status', 'file',
-            'created_at',
-        ]
+        fields = ['id', 'student', 'name', 'status', 'file', 'created_at']
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        rep['file'] = self.get_file_url(instance)
+        return rep
 
 
-class ProtectionOrderSerializer(serializers.ModelSerializer):
+class ProtectionOrderSerializer(FileUrlMixin, serializers.ModelSerializer):
     class Meta:
         model = ProtectionOrder
-        fields = [
-            'id', 'student',
-            'status', 'file',
-            'created_at',
-        ]
+        fields = ['id', 'student', 'status', 'file', 'created_at']
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        rep['file'] = self.get_file_url(instance)
+        return rep
 
 
+# ─────────────────────────────────────────────
+# STUDENT FULL SERIALIZER
+# ─────────────────────────────────────────────
 PREFETCH_FIELDS = [
     'achievements', 'health_info', 'language_info',
     'social_links', 'reprimands', 'family_social_status',
@@ -470,28 +481,8 @@ PREFETCH_FIELDS = [
 ]
 
 
-class StudentSerializer(serializers.ModelSerializer):
-    filled = serializers.SerializerMethodField()  # ✅
-
-    class Meta:
-        model = Student
-        fields = [
-            'id', 'group',
-            'first_name', 'last_name', 'third_name',
-            'birthday', 'gender', 'country',
-            'image', 'image_hemis',
-            'avg_gpa', 'course',
-            'hemis_id', 'email', 'phone',
-            'filled',  # ✅
-        ]
-
-    def get_filled(self, obj):
-        from .utils import calculate_student_completion
-        return calculate_student_completion(obj)
-
-
 class StudentFullSerializer(serializers.ModelSerializer):
-    filled               = serializers.SerializerMethodField()  # ✅
+    filled               = serializers.SerializerMethodField()
     details              = StudentDetailSerializer(many=True, read_only=True)
     achievements         = AchievementSerializer(many=True, read_only=True)
     health_info          = HealthInfoSerializer(many=True, read_only=True)
@@ -513,9 +504,9 @@ class StudentFullSerializer(serializers.ModelSerializer):
             'first_name', 'last_name', 'third_name',
             'birthday', 'gender', 'country',
             'image', 'image_hemis',
-            'avg_gpa', 'course',
-            'hemis_id', 'email', 'phone',
-            'filled',  # ✅
+            'avg_gpa', 'course', 'hemis_id',
+            'email', 'phone',
+            'filled',
             'details', 'achievements', 'health_info',
             'language_info', 'social_links', 'reprimands',
             'family_social_status', 'family_members',
@@ -526,24 +517,3 @@ class StudentFullSerializer(serializers.ModelSerializer):
     def get_filled(self, obj):
         from .utils import calculate_student_completion
         return calculate_student_completion(obj)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

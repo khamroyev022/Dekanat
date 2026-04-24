@@ -19,6 +19,41 @@ ROLE_CHOICES = (
     ('dekan', 'Dekan'),
     ('zam_dekan', 'Zam dekan'),
 )
+LANGUAGE_CHOICES = (
+    ('uz', "O'zbek"),
+    ('ru', 'Rus'),
+    ('en', 'Ingliz'),
+    ('tr', 'Turk'),
+    ('ar', 'Arab'),
+    ('zh', 'Xitoy'),
+    ('hi', 'Hind'),
+    ('fr', 'Fransuz'),
+    ('de', 'Nemis'),
+    ('es', 'Ispan'),
+    ('it', 'Italyan'),
+    ('pt', 'Portugaliya'),
+    ('ja', 'Yapon'),
+    ('ko', 'Koreys'),
+    ('fa', 'Fors'),
+    ('kk', 'Qozoq'),
+    ('ky', 'Qirg\'iz'),
+    ('tg', 'Tojik'),
+    ('tk', 'Turkman'),
+    ('az', 'Ozarbayjon'),
+    ('ka', 'Gruzin'),
+    ('uk', 'Ukraina'),
+    ('pl', 'Polyak'),
+    ('nl', 'Golland'),
+    ('sv', 'Shved'),
+    ('no', 'Norveg'),
+    ('fi', 'Fin'),
+    ('da', 'Daniya'),
+    ('he', 'Ibroniy'),
+    ('id', 'Indoneziya'),
+    ('ms', 'Malay'),
+    ('th', 'Tailand'),
+    ('vi', 'Vyetnam'),
+)
 
 EDUCATION_TYPE_CHOICES = (
     ('grant', 'Grant'),
@@ -40,8 +75,6 @@ LANGUAGE_LEVEL = (
     ('C1', 'C1'),
     ('C2', 'C2'),
 )
-
-
 
 MARITAL_STATUS = (
     ('single', "Bo'ydoq"),
@@ -174,7 +207,7 @@ class Student(models.Model):
     email = models.EmailField(blank=True)
     phone = models.CharField(max_length=20, blank=True)
     group = models.ForeignKey(Group, on_delete=models.PROTECT, related_name='students')
-
+    pnfl = models.CharField(null=True, blank=True, max_length=50)
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
 
@@ -230,7 +263,7 @@ class HealthInfo(models.Model):
     disability_status = models.CharField(max_length=10, choices=DISABILITY_GROUP, null=True, blank=True)
     file = models.FileField(upload_to='health_info/',null=True,blank=True)
     date = models.DateField(null=True,blank=True)
-    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='health_info', null=True)
+    student = models.OneToOneField(Student, on_delete=models.CASCADE, related_name='health_info', null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -244,7 +277,7 @@ class HealthInfo(models.Model):
 
 
 class LanguageInfo(models.Model):
-    name = models.CharField(max_length=100,null=True, blank=True)
+    name = models.CharField(max_length=50, choices=LANGUAGE_CHOICES, default='uz')
     level = models.CharField(max_length=10, choices=LANGUAGE_LEVEL,null=True, blank=True)
     file = models.FileField(upload_to='language_info/',null=True, blank=True)
     status = models.BooleanField(default=False)
@@ -279,7 +312,8 @@ class SocialLink(models.Model):
 
 
 class Reprimand(models.Model):
-    date = models.DateField()
+    date = models.DateField(null=True, blank=True)
+    status =  models.BooleanField(default=False)
     title = models.CharField(max_length=200,null=True, blank=True)
     file = models.FileField(upload_to='reprimand/',null=True,blank=True)
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='reprimands')
@@ -304,7 +338,7 @@ class FamilySocialStatus(models.Model):
     guardian_description = models.CharField(max_length=255, null=True, blank=True)
     is_crime_prone = models.BooleanField(default=False)
     official_employment = models.CharField(max_length=100, null=True, blank=True)
-    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='family_social_status')
+    student = models.OneToOneField(Student, on_delete=models.CASCADE, related_name='family_social_status')
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -366,7 +400,6 @@ class Interest(models.Model):
         verbose_name_plural = 'Interests'
         ordering = ['name']
 
-
 class SocialRegistry(models.Model):
     status = models.BooleanField()
     file = models.FileField(upload_to='social_registry/',null=True, blank=True)
@@ -382,27 +415,40 @@ class SocialRegistry(models.Model):
         verbose_name_plural = 'Social Registries'
         ordering = ['status']
 
-
 class Dormitory(models.Model):
-    status = models.BooleanField(default=False)
+
+    RESIDENCE_TYPE_CHOICES = [
+        ('own_house',   "O'z uyida"),
+        ('relative',    "Qarindoshinikida"),
+        ('rented',      "Ijarada"),
+    ]
+
+    student = models.OneToOneField(
+        Student, on_delete=models.CASCADE, related_name='dormitory'
+    )
+    status   = models.BooleanField()
     dormitory_name = models.CharField(max_length=150, null=True, blank=True)
-    building_name = models.CharField(max_length=150, null=True, blank=True)
-    building_phone = models.CharField(max_length=20, null=True, blank=True)
-    floor = models.CharField(max_length=20, null=True, blank=True)
-    residence_type = models.CharField(max_length=50, null=True, blank=True)
-    address = models.CharField(max_length=100, null=True, blank=True)
-    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='dormitories')
+    building       = models.CharField(max_length=150, null=True, blank=True)
+    floor          = models.IntegerField(null=True, blank=True)
+    room           = models.CharField(max_length=50,  null=True, blank=True)
+    residence_type = models.CharField(
+        max_length=50,
+        choices=RESIDENCE_TYPE_CHOICES,
+        null=True, blank=True
+    )
+    address        = models.CharField(max_length=255, null=True, blank=True)  # manzil
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return self.dormitory_name or f"Dormitory #{self.pk}"
+        if self.status:
+            return f"{self.dormitory_name} | {self.building}-bino | {self.floor}-qavat | {self.room}-xona"
+        return f"{self.get_residence_type_display()} | {self.address}"
 
     class Meta:
-        db_table = 'dormitory'
-        verbose_name = 'Dormitory'
-        verbose_name_plural = 'Dormitories'
-        ordering = ['status']
-
+        db_table         = 'dormitory'
+        verbose_name     = 'Turar joy'
+        verbose_name_plural = 'Turar joylar'
+        ordering         = ['created_at']
 
 class Gifted(models.Model):
     name = models.CharField(max_length=100, null=True, blank=True)
