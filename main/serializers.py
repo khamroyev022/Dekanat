@@ -1,3 +1,5 @@
+from pyexpat import model
+
 from rest_framework import serializers
 from .models import *
 from .models import (
@@ -37,7 +39,6 @@ class LoginSerializer(serializers.ModelSerializer):
             'nationality', 'passport_seria', 'phone_number',
             'workplace', 'role', 'tutor_groups',
         )
-
 
 class CreateUserSerializer(serializers.ModelSerializer):
     group_ids = serializers.ListField(
@@ -122,8 +123,6 @@ class CreateUserSerializer(serializers.ModelSerializer):
 
         return instance
 
-
-
 class TutorGroupSerializer(serializers.ModelSerializer):
     faculty_name = serializers.CharField(source='direction.faculty.name', read_only=True)
 
@@ -131,37 +130,36 @@ class TutorGroupSerializer(serializers.ModelSerializer):
         model = Group
         fields = ('id', 'name', 'education_code', 'education_language', 'faculty_name')
 
-
 class DirectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Direction
         fields = '__all__'
 
+class Tutorserializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomUser
+        fields = ('first_name','last_name',)
 
 class GroupSerializer(serializers.ModelSerializer):
-
+    tutor = Tutorserializer
     class Meta:
         model = Group
-        fields = ('id', 'name', 'education_language')
-
+        fields = ('id', 'name', 'education_language','tutor')
 
 class Roleserializer(serializers.ModelSerializer):
     class Meta:
         model = Role
         fields = ['id', 'name']
 
-
 class Facultyserializer(serializers.ModelSerializer):
     class Meta:
         model = Faculty
         fields = ['id', 'name', 'code', 'created_at']
 
-
 class Directionserializer(serializers.ModelSerializer):
     class Meta:
         model = Direction
         fields = ['id', 'name', 'code']
-
 
 class Groupserializer(serializers.ModelSerializer):
     class Meta:
@@ -182,7 +180,7 @@ class StudentDetailSerializer(serializers.ModelSerializer):
             't_latitude', 't_longitude',
             'is_orphanage_student', 'is_military_family',
             'education_type', 'is_pregnant',
-            'behavior_issues', 'is_adult','pnfl',
+            'behavior_issues', 'is_adult',
             'created_at',
         ]
 

@@ -2,8 +2,10 @@ from rest_framework.permissions import BasePermission
 
 ROLE_ADMIN = 'admin'
 ROLE_DEKAN = 'dekan'
-ROLE_TUTOR = 'tutor'
 ROLE_ZAM_DEKAN = 'zam dekan'
+
+ROLE_TUTOR_ID = 2
+ROLE_ZAM_DEKAN_ID = 4
 
 
 class UserCRUDPermission(BasePermission):
@@ -30,18 +32,17 @@ class UserCRUDPermission(BasePermission):
         if user.is_superuser or role_name == ROLE_ADMIN:
             return True
 
-        # Dekan — faqat o'z fakultetidagi tutor va zam dekan
         if role_name == ROLE_DEKAN:
             return (
-                obj.faculty == user.faculty and
-                getattr(obj.role, 'name', '').lower().strip() in ['tutor', 'zam dekan']
+                obj.faculty_id == user.faculty_id and
+                obj.role_id in [ROLE_TUTOR_ID, ROLE_ZAM_DEKAN_ID]
             )
 
         # Zam dekan — faqat o'z fakultetidagi tutor
         if role_name == ROLE_ZAM_DEKAN:
             return (
-                obj.faculty == user.faculty and
-                getattr(obj.role, 'name', '').lower().strip() == 'tutor'
+                obj.faculty_id == user.faculty_id and
+                obj.role_id == ROLE_TUTOR_ID
             )
 
         return False

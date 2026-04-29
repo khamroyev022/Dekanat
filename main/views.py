@@ -1,5 +1,5 @@
 from lib2to3.pgen2.tokenize import group
-
+from .export_pdf import *
 from django.contrib.admin.templatetags.admin_list import pagination
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -14,8 +14,8 @@ from .pagination import StudentPagination
 from .serializers import *
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework import viewsets
-from rest_framework import  status
-from  .hemis_get_student import HEMISStudentImportService
+from rest_framework import status
+from .hemis_get_student import HEMISStudentImportService
 from rest_framework_simplejwt.tokens import RefreshToken
 from .persmission import *
 from .filters import *
@@ -27,54 +27,55 @@ ROLE_ZAM_DEKAN_ID = 4
 
 DEKAN_ROLE_IDS = [3, 4]
 
+
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def import_students(request):
-    base_url = request.data.get("base_url") or "https://student.bsmi.uz/rest/v1/data/student-list"
-    token = request.data.get("token") or HEMIS_TOKEN
+    base_url   = request.data.get("base_url") or "https://student.bsmi.uz/rest/v1/data/student-list"
+    token      = request.data.get("token") or HEMIS_TOKEN
     start_page = request.data.get("start_page", 1)
-    max_pages = request.data.get("max_pages", 583) #583
+    max_pages  = request.data.get("max_pages", 5)
 
     service = HEMISStudentImportService(
         base_url=base_url,
         headers={"Authorization": f"Bearer {token}"},
         timeout=20,
-        save_images=False
+        save_images=False,
     )
-
     result = service.run(start_page=start_page, max_pages=max_pages)
 
     return Response({
-        "message": "Import muvaffaqiyatli yakunlandi",
-        "created": result["created"],
-        "updated": result["updated"],
-        "last_page": result["last_page"],
+        "message":    "Import muvaffaqiyatli yakunlandi",
+        "created":    result["created"],
+        "updated":    result["updated"],
+        "last_page":  result["last_page"],
     }, status=status.HTTP_200_OK)
 
+
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def update_students(request):
-    base_url = "https://student.bsmi.uz/rest/v1/data/student-list"
-    token = HEMIS_TOKEN
+    base_url   = "https://student.bsmi.uz/rest/v1/data/student-list"
+    token      = HEMIS_TOKEN
     start_page = request.data.get("start_page", 1)
-    max_pages = request.data.get("max_pages", 583)  # ← 583 ga o'zgartiring
+    max_pages  = request.data.get("max_pages", 583)
 
     service = HEMISStudentUpdate(
         base_url=base_url,
         headers={"Authorization": f"Bearer {token}"},
         timeout=20,
-        save_images=False
+        save_images=False,
     )
-
     result = service.run(start_page=start_page, max_pages=max_pages)
 
     return Response({
-        "message": "Yangilash muvaffaqiyatli yakunlandi",
-        "updated": result["updated"],
-        "skipped": result["skipped"],
-        "last_page": result["last_page"],
+        "message":      "Yangilash muvaffaqiyatli yakunlandi",
+        "updated":      result["updated"],
+        "skipped":      result["skipped"],
+        "last_page":    result["last_page"],
         "failed_pages": result["failed_pages"],
     }, status=status.HTTP_200_OK)
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -86,7 +87,7 @@ def login(request):
         return Response({
             'success': False,
             'message': "username yoki password majburiy",
-            'data': None
+            'data':    None,
         }, status=status.HTTP_400_BAD_REQUEST)
 
     user = authenticate(request, username=username, password=password)
@@ -94,67 +95,79 @@ def login(request):
     if user is None:
         return Response({
             'success': False,
-            'message': "username yoki password noto‘g‘ri",
-            'data': None
+            'message': "username yoki password noto'g'ri",
+            'data':    None,
         }, status=status.HTTP_400_BAD_REQUEST)
 
-    refresh = RefreshToken.for_user(user)
+    refresh    = RefreshToken.for_user(user)
     serializer = LoginSerializer(user)
 
     return Response({
-        'success': True,
-        'message': "Login muvaffaqiyatli",
-        'data': serializer.data,
-        'access': str(refresh.access_token),
-        'refresh': str(refresh),
+        'success':  True,
+        'message':  "Login muvaffaqiyatli",
+        'data':     serializer.data,
+        'access':   str(refresh.access_token),
+        'refresh':  str(refresh),
         'username': user.username,
     }, status=status.HTTP_200_OK)
 
+
 class LogoutView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def post(self, request):
         try:
             refresh_token = request.data.get("refresh")
             token = RefreshToken(refresh_token)
-            token.blacklist()  # tokenni blacklistga qo'shadi
+            token.blacklist()
             return Response({
                 'success': True,
-                'message': "Muvaffaqiyatli chiqildi"
+                'message': "Muvaffaqiyatli chiqildi",
             }, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({
                 'success': False,
-                'message': str(e)
+                'message': str(e),
             }, status=status.HTTP_400_BAD_REQUEST)
 
+
 class CreateUserViewSet(viewsets.ModelViewSet):
-    serializer_class = CreateUserSerializer
+    serializer_class   = CreateUserSerializer
     permission_classes = [UserCRUDPermission]
 
     def get_queryset(self):
-        user = self.request.user
+        user      = self.request.user
         role_name = getattr(user.role, 'name', '').lower().strip()
 
         if user.is_superuser or role_name == ROLE_ADMIN:
-            return CustomUser.objects.all() \
-                .prefetch_related('tutor_groups') \
+            return (
+                CustomUser.objects.all()
+                .prefetch_related('tutor_groups')
                 .select_related('role', 'faculty')
+            )
 
-        # Dekan — o'zi + o'z fakultetidagi tutor va zam dekan
         if role_name == ROLE_DEKAN:
-            from django.db.models import Q
-            return CustomUser.objects.filter(
-                Q(id=user.id) |  # o'zi
-                Q(faculty=user.faculty, role__name__iregex=r'^(tutor|zam dekan)$')
-            ).prefetch_related('tutor_groups').select_related('role', 'faculty')
+            return (
+                CustomUser.objects.filter(
+                    Q(id=user.id) |
+                    Q(faculty_id=user.faculty_id, role_id=ROLE_TUTOR_ID) |
+                    Q(faculty_id=user.faculty_id, role_id=ROLE_ZAM_DEKAN_ID)
+                )
+                .prefetch_related('tutor_groups')
+                .select_related('role', 'faculty')
+            )
 
-        # Zam dekan — faqat o'z fakultetidagi tutorlar
         if role_name == ROLE_ZAM_DEKAN:
-            return CustomUser.objects.filter(
-                faculty=user.faculty,
-                role__name__iregex=r'^tutor$'
-            ).prefetch_related('tutor_groups').select_related('role', 'faculty')
+            if not user.faculty_id:
+                return CustomUser.objects.none()
+            return (
+                CustomUser.objects.filter(
+                    faculty_id=user.faculty_id,
+                    role__name__iexact='tutor',
+                )
+                .prefetch_related('tutor_groups')
+                .select_related('role', 'faculty')
+            )
 
         return CustomUser.objects.none()
 
@@ -165,101 +178,75 @@ class CreateUserViewSet(viewsets.ModelViewSet):
             return None
 
     def create(self, request, *args, **kwargs):
-        user = request.user
+        user      = request.user
         role_name = getattr(user.role, 'name', '').lower().strip()
 
-        # Dekan — faqat tutor(id=2) va zam dekan(id=4) yarata oladi
         if role_name == ROLE_DEKAN:
             try:
                 new_role_id = int(request.data.get('role'))
             except (TypeError, ValueError):
-                return Response({
-                    'success': False,
-                    'message': "Role kiritilmagan"
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return Response({'success': False, 'message': "Role kiritilmagan"},
+                                status=status.HTTP_400_BAD_REQUEST)
 
             if new_role_id not in [ROLE_TUTOR_ID, ROLE_ZAM_DEKAN_ID]:
-                return Response({
-                    'success': False,
-                    'message': "Siz faqat tutor yoki zam dekan yarata olasiz"
-                }, status=status.HTTP_403_FORBIDDEN)
+                return Response({'success': False,
+                                 'message': "Siz faqat tutor yoki zam dekan yarata olasiz"},
+                                status=status.HTTP_403_FORBIDDEN)
 
             data = request.data.copy()
             data['faculty'] = user.faculty_id
             serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
             self.perform_create(serializer)
-            return Response({
-                'success': True,
-                'message': "Foydalanuvchi yaratildi",
-                'data': serializer.data
-            }, status=status.HTTP_201_CREATED)
+            return Response({'success': True, 'message': "Foydalanuvchi yaratildi",
+                             'data': serializer.data}, status=status.HTTP_201_CREATED)
 
-        # Zam dekan — faqat tutor(id=2) yarata oladi
         if role_name == ROLE_ZAM_DEKAN:
             try:
                 new_role_id = int(request.data.get('role'))
             except (TypeError, ValueError):
-                return Response({
-                    'success': False,
-                    'message': "Role kiritilmagan"
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return Response({'success': False, 'message': "Role kiritilmagan"},
+                                status=status.HTTP_400_BAD_REQUEST)
 
             if new_role_id != ROLE_TUTOR_ID:
-                return Response({
-                    'success': False,
-                    'message': "Siz faqat tutor yarata olasiz"
-                }, status=status.HTTP_403_FORBIDDEN)
+                return Response({'success': False, 'message': "Siz faqat tutor yarata olasiz"},
+                                status=status.HTTP_403_FORBIDDEN)
 
             data = request.data.copy()
             data['faculty'] = user.faculty_id
             serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
             self.perform_create(serializer)
-            return Response({
-                'success': True,
-                'message': "Tutor yaratildi",
-                'data': serializer.data
-            }, status=status.HTTP_201_CREATED)
+            return Response({'success': True, 'message': "Tutor yaratildi",
+                             'data': serializer.data}, status=status.HTTP_201_CREATED)
 
-        # Admin — cheklovsiz
         return super().create(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         self.perform_destroy(self.get_object())
-        return Response({
-            'success': True,
-            'message': "Foydalanuvchi o'chirildi"
-        }, status=status.HTTP_200_OK)
+        return Response({'success': True, 'message': "Foydalanuvchi o'chirildi"},
+                        status=status.HTTP_200_OK)
 
     def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
+        partial    = kwargs.pop('partial', False)
+        instance   = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
-        return Response({
-            'success': True,
-            'message': "Yangilandi",
-            'data': serializer.data
-        })
+        return Response({'success': True, 'message': "Yangilandi", 'data': serializer.data})
 
     def list(self, request, *args, **kwargs):
         serializer = self.get_serializer(self.get_queryset(), many=True)
-        return Response({
-            'success': True,
-            'data': serializer.data
-        })
+        return Response({'success': True, 'data': serializer.data})
 
     def retrieve(self, request, *args, **kwargs):
         serializer = self.get_serializer(self.get_object())
-        return Response({
-            'success': True,
-            'data': serializer.data
-        })
+        return Response({'success': True, 'data': serializer.data})
+
 
 class FacultyGEtApipview(APIView):
     permission_classes = [IsAuthenticated]
+
     def get(self, request):
         user = request.user
         if user.role.id == 1:
@@ -267,38 +254,39 @@ class FacultyGEtApipview(APIView):
             ser = Facultyserializer(faculty, many=True)
             return Response({
                 'success': True,
-                'user':user.username,
-                'message':"Hamma fakultetlar ro'yxati",
-                'data': ser.data
-            },status=status.HTTP_200_OK)
+                'user':    user.username,
+                'message': "Hamma fakultetlar ro'yxati",
+                'data':    ser.data,
+            }, status=status.HTTP_200_OK)
         elif user.role.id == 2 or 3 or 4:
             faculty = Faculty.objects.filter(dekans=user)
             ser = Facultyserializer(faculty, many=True)
             return Response({
                 'success': True,
-                'user':user.username,
-                'message':"Sizning fakultetingiz",
-                'data':ser.data
-            },status=status.HTTP_200_OK)
+                'user':    user.username,
+                'message': "Sizning fakultetingiz",
+                'data':    ser.data,
+            }, status=status.HTTP_200_OK)
         else:
             return Response({
                 'success': False,
-                'message':"Xatolik yuz berdi",
-                'data':{},
-            },status=status.HTTP_400_BAD_REQUEST)
+                'message': "Xatolik yuz berdi",
+                'data':    {},
+            }, status=status.HTTP_400_BAD_REQUEST)
+
 
 class DirectionGETApiview(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self,request):
-        user = request.user
+    def get(self, request):
+        user       = request.user
         faculty_id = request.query_params.get('faculty_id')
 
         if not faculty_id:
             return Response({
                 'success': False,
                 'message': 'faculty_id parametri kiritilmadi',
-                'data': None,
+                'data':    None,
             }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
@@ -307,52 +295,49 @@ class DirectionGETApiview(APIView):
             return Response({
                 'success': False,
                 'message': "Fakultet topilmadi",
-                'data': None
+                'data':    None,
             }, status=status.HTTP_400_BAD_REQUEST)
 
         if user.role.id == 1:
-            direction = Direction.objects.filter(faculty_id = faculty_id)
+            direction = Direction.objects.filter(faculty_id=faculty_id)
             ser = Directionserializer(direction, many=True)
-
             return Response({
                 'success': True,
-                'message':"Yo'naishlar",
-                'faculty':faculty_id.name,
-                'data': ser.data
-            },status.HTTP_200_OK)
-
+                'message': "Yo'naishlar",
+                'faculty': faculty_id.name,
+                'data':    ser.data,
+            }, status.HTTP_200_OK)
 
         elif user.role.id in [2, 3, 4]:
             if not user.faculty:
                 return Response({
                     'success': False,
                     'message': "Sizga biriktirilgan fakultet yo'q",
-                    'data': None
+                    'data':    None,
                 }, status=status.HTTP_404_NOT_FOUND)
 
             directions = Direction.objects.filter(faculty=user.faculty)
             ser = DirectionSerializer(directions, many=True)
-
             return Response({
                 'success': True,
                 'message': "Sizning fakultetingiz yo'nalishlari",
                 'faculty': user.faculty.name,
-                'data': ser.data
+                'data':    ser.data,
             }, status=status.HTTP_200_OK)
 
         else:
             return Response({
                 'success': False,
                 'message': "Ruxsat yo'q",
-                'data': None
+                'data':    None,
             }, status=status.HTTP_403_FORBIDDEN)
+
 
 class GroupsGetApiView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        user = request.user
-
+        user               = request.user
         search             = request.query_params.get('search')
         education_language = request.query_params.get('education_language')
 
@@ -375,7 +360,6 @@ class GroupsGetApiView(APIView):
 
             groups = apply_filters(Group.objects.filter(direction=direction))
             ser    = GroupSerializer(groups, many=True)
-
             return ok("Guruhlar ro'yxati", ser.data)
 
         elif user.role.id in [2, 3, 4]:
@@ -384,27 +368,29 @@ class GroupsGetApiView(APIView):
 
             groups = apply_filters(Group.objects.filter(direction__faculty=user.faculty))
             ser    = GroupSerializer(groups, many=True)
-
             return ok("Sizning fakultetingiz guruhlari", ser.data)
 
         return fail("Ruxsat yo'q", status.HTTP_403_FORBIDDEN)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 PREFETCH_FIELDS = [
     'achievements', 'health_info', 'language_info',
     'social_links', 'reprimands', 'family_social_status',
     'family_members', 'interests', 'social_registries',
-    'dormitory',
-    'gifteds', 'protection_orders',
+    'dormitory', 'gifteds', 'protection_orders',
 ]
+
 
 class StudentCRUD(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        user = request.user
+        user       = request.user
         student_id = request.query_params.get('student_id')
-        group_id = request.query_params.get('group_id')
+        group_id   = request.query_params.get('group_id')
 
-        # ── Bitta student ──
+        # ── Bitta student ──────────────────────────────────────────────────────
         if student_id:
             try:
                 student = Student.objects.prefetch_related(
@@ -417,14 +403,15 @@ class StudentCRUD(APIView):
                 if not user.faculty:
                     return fail("Sizga biriktirilgan fakultet yo'q", status.HTTP_404_NOT_FOUND)
                 if student.group.direction.faculty != user.faculty:
-                    return fail("Bu student sizning fakultetingizga tegishli emas", status.HTTP_403_FORBIDDEN)
+                    return fail("Bu student sizning fakultetingizga tegishli emas",
+                                status.HTTP_403_FORBIDDEN)
             elif user.role.id != 1:
                 return fail("Ruxsat yo'q", status.HTTP_403_FORBIDDEN)
 
             ser = StudentFullSerializer(student)
             return ok("Student ma'lumoti", ser.data)
 
-        # ── Queryset ──
+        # ── Queryset ───────────────────────────────────────────────────────────
         if group_id:
             try:
                 group = Group.objects.get(id=group_id)
@@ -435,7 +422,8 @@ class StudentCRUD(APIView):
                 if not user.faculty:
                     return fail("Sizga biriktirilgan fakultet yo'q", status.HTTP_404_NOT_FOUND)
                 if group.direction.faculty != user.faculty:
-                    return fail("Bu guruh sizning fakultetingizga tegishli emas", status.HTTP_403_FORBIDDEN)
+                    return fail("Bu guruh sizning fakultetingizga tegishli emas",
+                                status.HTTP_403_FORBIDDEN)
             elif user.role.id != 1:
                 return fail("Ruxsat yo'q", status.HTTP_403_FORBIDDEN)
 
@@ -454,13 +442,19 @@ class StudentCRUD(APIView):
         else:
             return fail("Ruxsat yo'q", status.HTTP_403_FORBIDDEN)
 
-        # ✅ FILTER QO'LLASH
+        # ── Filter ─────────────────────────────────────────────────────────────
         f = StudentFilter(request.query_params, queryset=students)
         if not f.is_valid():
             return fail(f.errors)
         students = f.qs
 
-        # Sahifalash
+        # ── PDF export ─────────────────────────────────────────────────────────
+        # ?export=pdf          → qisqa hisobot (A4 portrait)
+        # ?export=pdf&mode=full → to'liq hisobot (A4 landscape)
+        if request.query_params.get("export") == "pdf":
+            return generate_student_pdf(students, request)
+
+        # ── Sahifalash ─────────────────────────────────────────────────────────
         paginator = StudentPagination()
         page = paginator.paginate_queryset(students, request)
         if page is not None:
@@ -469,6 +463,34 @@ class StudentCRUD(APIView):
 
         ser = StudentSerializer(students, many=True)
         return ok("Studentlar ro'yxati", ser.data)
+
+    def post(self, request):
+        user = request.user
+
+        if user.role.id not in [1, 2, 3, 4]:
+            return fail("Ruxsat yo'q", status.HTTP_403_FORBIDDEN)
+
+        if user.role.id in [2, 3, 4]:
+            group_id = request.data.get('group')
+            if not group_id:
+                return fail("group kiritilmadi")
+            try:
+                group = Group.objects.get(id=group_id)
+            except Group.DoesNotExist:
+                return fail("Guruh topilmadi", status.HTTP_404_NOT_FOUND)
+
+            if not user.faculty:
+                return fail("Sizga biriktirilgan fakultet yo'q", status.HTTP_404_NOT_FOUND)
+            if group.direction.faculty != user.faculty:
+                return fail("Bu guruh sizning fakultetingizga tegishli emas",
+                            status.HTTP_403_FORBIDDEN)
+
+        ser = StudentSerializer(data=request.data)
+        if ser.is_valid():
+            student = ser.save()
+            return ok("Student qo'shildi", StudentSerializer(student).data,
+                      status.HTTP_201_CREATED)
+        return fail(ser.errors)
 
     def patch(self, request):
         student_id = request.query_params.get('student_id')
@@ -493,11 +515,15 @@ class StudentCRUD(APIView):
         student.delete()
         return ok("Student o'chirildi", None)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
 def ok(message, data, code=status.HTTP_200_OK):
     return Response({'success': True, 'message': message, 'data': data}, status=code)
 
+
 def fail(message, code=status.HTTP_400_BAD_REQUEST):
     return Response({'success': False, 'message': message, 'data': None}, status=code)
+
 
 def get_student(student_id):
     try:
@@ -505,14 +531,15 @@ def get_student(student_id):
     except Student.DoesNotExist:
         return None, fail("Student topilmadi", status.HTTP_404_NOT_FOUND)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
 class BaseCRUD(APIView):
-    permission_classes = [AllowAny]
-    serializer_class = None
-    related_name     = None
-    is_one_to_one    = False
+    permission_classes = [IsAuthenticated]
+    serializer_class   = None
+    related_name       = None
+    is_one_to_one      = False
 
     def get_serializer(self, *args, **kwargs):
-        """request ni har doim context ga qo'shadi"""
         kwargs['context'] = {'request': self.request}
         return self.serializer_class(*args, **kwargs)
 
@@ -534,11 +561,11 @@ class BaseCRUD(APIView):
                 obj = self.get_object(student)
             except Exception:
                 return fail("Ma'lumot topilmadi", status.HTTP_404_NOT_FOUND)
-            ser = self.get_serializer(obj)          # ✅
+            ser = self.get_serializer(obj)
             return ok("Ma'lumot", ser.data)
 
         qs  = getattr(student, self.related_name).all()
-        ser = self.get_serializer(qs, many=True)    # ✅
+        ser = self.get_serializer(qs, many=True)
         return ok("Ma'lumotlar", ser.data)
 
     def post(self, request):
@@ -556,7 +583,7 @@ class BaseCRUD(APIView):
             except Exception:
                 pass
 
-        ser = self.get_serializer(data=request.data)  # ✅
+        ser = self.get_serializer(data=request.data)
         if ser.is_valid():
             ser.save(student=student)
             return ok("Yaratildi", ser.data, status.HTTP_201_CREATED)
@@ -584,7 +611,7 @@ class BaseCRUD(APIView):
             except Exception:
                 return fail("Topilmadi", status.HTTP_404_NOT_FOUND)
 
-        ser = self.get_serializer(obj, data=request.data, partial=True)  # ✅
+        ser = self.get_serializer(obj, data=request.data, partial=True)
         if ser.is_valid():
             ser.save()
             return ok("Yangilandi", ser.data)
@@ -615,117 +642,91 @@ class BaseCRUD(APIView):
         obj.delete()
         return ok("O'chirildi", None)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
 class StudentDetailCRUD(BaseCRUD):
-    serializer_class = StudentDetailSerializer
-    related_name     = 'details'
+    serializer_class   = StudentDetailSerializer
+    related_name       = 'details'
+    permission_classes = [IsAuthenticated]
 
 class AchievementCRUD(BaseCRUD):
-    serializer_class = AchievementSerializer
-    related_name     = 'achievements'
+    serializer_class   = AchievementSerializer
+    related_name       = 'achievements'
+    permission_classes = [IsAuthenticated]
 
 class HealthInfoCRUD(BaseCRUD):
-    serializer_class = HealthInfoSerializer
-    related_name     = 'health_info'
-    is_one_to_one = True
+    serializer_class   = HealthInfoSerializer
+    related_name       = 'health_info'
+    is_one_to_one      = True
+    permission_classes = [IsAuthenticated]
 
 class LanguageInfoCRUD(BaseCRUD):
-    serializer_class = LanguageInfoSerializer
-    related_name     = 'language_info'
+    serializer_class   = LanguageInfoSerializer
+    related_name       = 'language_info'
+    permission_classes = [IsAuthenticated]
 
 class SocialLinkCRUD(BaseCRUD):
-    serializer_class = SocialLinkSerializer
-    related_name     = 'social_links'
+    serializer_class   = SocialLinkSerializer
+    related_name       = 'social_links'
+    permission_classes = [IsAuthenticated]
 
 class ReprimandCRUD(BaseCRUD):
-    serializer_class = ReprimandSerializer
-    related_name     = 'reprimands'
+    serializer_class   = ReprimandSerializer
+    related_name       = 'reprimands'
+    permission_classes = [IsAuthenticated]
 
 class FamilySocialStatusCRUD(BaseCRUD):
-    serializer_class = FamilySocialStatusSerializer
-    related_name     = 'family_social_status'
-    is_one_to_one = True
+    serializer_class   = FamilySocialStatusSerializer
+    related_name       = 'family_social_status'
+    is_one_to_one      = True
+    permission_classes = [IsAuthenticated]
 
 class FamilyMemberCRUD(BaseCRUD):
-    serializer_class = FamilyMemberSerializer
-    related_name     = 'family_members'
+    serializer_class   = FamilyMemberSerializer
+    related_name       = 'family_members'
+    permission_classes = [IsAuthenticated]
 
 class InterestCRUD(BaseCRUD):
-    serializer_class = InterestSerializer
-    related_name     = 'interests'
+    serializer_class   = InterestSerializer
+    related_name       = 'interests'
+    permission_classes = [IsAuthenticated]
 
 class SocialRegistryCRUD(BaseCRUD):
-    serializer_class = SocialRegistrySerializer
-    related_name     = 'social_registries'
+    serializer_class   = SocialRegistrySerializer
+    related_name       = 'social_registries'
+    permission_classes = [IsAuthenticated]
 
 class DormitoryCRUD(BaseCRUD):
-    serializer_class = DormitorySerializer
-    related_name     = 'dormitory'
-    is_one_to_one    = True
+    serializer_class   = DormitorySerializer
+    related_name       = 'dormitory'
+    is_one_to_one      = True
+    permission_classes = [IsAuthenticated]
 
 class GiftedCRUD(BaseCRUD):
-    serializer_class = GiftedSerializer
-    related_name     = 'gifteds'
+    serializer_class   = GiftedSerializer
+    related_name       = 'gifteds'
+    permission_classes = [IsAuthenticated]
 
 class ProtectionOrderCRUD(BaseCRUD):
-    serializer_class = ProtectionOrderSerializer
-    related_name     = 'protection_orders'
+    serializer_class   = ProtectionOrderSerializer
+    related_name       = 'protection_orders'
+    permission_classes = [IsAuthenticated]
+
 
 class RoleApiview(APIView):
-    permission_classes(IsAuthenticated)
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
         role = Role.objects.all()
-        ser = Roleserializer(role, many=True)
+        ser  = Roleserializer(role, many=True)
         return Response({
             'success': True,
-            'message':"Rollar ro'yxati",
-            'data': ser.data,
+            'message': "Rollar ro'yxati",
+            'data':    ser.data,
         })
 
+
 class categoryInterstView(viewsets.ModelViewSet):
-    serializer_class = CategoryInterestSerializer
-    queryset = CategoryInterest.objects.all()
-    permission_classes = [AllowAny]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    serializer_class   = CategoryInterestSerializer
+    queryset           = CategoryInterest.objects.all()
+    permission_classes = [IsAuthenticated]

@@ -71,17 +71,13 @@ class StudentFilter(django_filters.FilterSet):
     # ───────── ACHIEVEMENT ─────────
     has_achievement = django_filters.BooleanFilter(method='filter_has_achievement')
 
-    # ───────── REPRIMAND ─────────
     has_reprimand    = django_filters.BooleanFilter(method='filter_has_reprimand')
     reprimand_status = django_filters.BooleanFilter(field_name='reprimands__status')
 
-    # ───────── SOCIAL REGISTRY ─────────
     social_registry_status = django_filters.BooleanFilter(field_name='social_registries__status')
 
-    # ───────── GIFTED ─────────
     is_gifted = django_filters.BooleanFilter(field_name='gifteds__status')
 
-    # ───────── PROTECTION ORDER ─────────
     has_protection_order = django_filters.BooleanFilter(field_name='protection_orders__status')
 
     class Meta:
