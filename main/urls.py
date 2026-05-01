@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import *
+from .view1 import *
 from rest_framework.routers import DefaultRouter
 router = DefaultRouter()
 router.register('users',CreateUserViewSet,basename='create_user'),
@@ -28,6 +28,8 @@ urlpatterns = [
     path('faculty/direction/group/student/dormitory/',          DormitoryCRUD.as_view()),
     path('faculty/direction/group/student/gifted/',             GiftedCRUD.as_view()),
     path('faculty/direction/group/student/protection-order/',   ProtectionOrderCRUD.as_view()),
+    path('statistika/',Statistika.as_view()),
+    path('student-reprimands/',ReprimandStudentGet.as_view()),
 ]+ router.urls
 
 

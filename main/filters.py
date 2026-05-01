@@ -10,21 +10,17 @@ class StudentFilter(django_filters.FilterSet):
     # ───────── QIDIRUV ─────────
     search = django_filters.CharFilter(method='search_filter')
 
-    # ───────── ASOSIY ─────────
     gender  = django_filters.ChoiceFilter(choices=GENDER_CHOICES)
     course  = django_filters.CharFilter(lookup_expr='exact')
     country = django_filters.CharFilter(lookup_expr='icontains')
 
-    # ───────── GURUH / YO'NALISH / FAKULTET ─────────
     group     = django_filters.NumberFilter(field_name='group__id')
     direction = django_filters.NumberFilter(field_name='group__direction__id')
     faculty   = django_filters.NumberFilter(field_name='group__direction__faculty__id')
 
-    # ───────── GPA ─────────
-    gpa_min = django_filters.NumberFilter(field_name='avg_gpa', lookup_expr='gte')
-    gpa_max = django_filters.NumberFilter(field_name='avg_gpa', lookup_expr='lte')
+    gpa = django_filters.NumberFilter(method='filter_gpa')
 
-    # ───────── STUDENT DETAIL ─────────
+
     education_type       = django_filters.ChoiceFilter(
                                field_name='details__education_type',
                                choices=EDUCATION_TYPE_CHOICES
@@ -105,3 +101,10 @@ class StudentFilter(django_filters.FilterSet):
         if value:
             return queryset.filter(reprimands__isnull=False).distinct()
         return queryset.filter(reprimands__isnull=True)
+
+    def filter_gpa(self, queryset, name, value):
+        if int(value) == 1:
+            return queryset.order_by('-avg_gpa')  # yuqoridan pastga
+        elif int(value) == 0:
+            return queryset.order_by('avg_gpa')   # pastdan yuqoriga
+        return queryset

@@ -1,5 +1,4 @@
 from pyexpat import model
-
 from rest_framework import serializers
 from .models import *
 from .models import (
@@ -8,6 +7,8 @@ from .models import (
     CategoryInterest, Interest, SocialRegistry,
     Dormitory, Gifted, ProtectionOrder
 )
+from django.db.models import Exists, OuterRef, Count
+
 
 class FileUrlMixin:
 
@@ -139,12 +140,94 @@ class Tutorserializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
         fields = ('first_name','last_name',)
+class StudentReprimandSerializer(serializers.ModelSerializer):
+    reprimand_count = serializers.IntegerField()
+
+    class Meta:
+        model  = Student
+        fields = ('id', 'first_name', 'last_name', 'third_name',
+                  'hemis_id', 'course', 'reprimand_count')
+
 
 class GroupSerializer(serializers.ModelSerializer):
-    tutor = Tutorserializer
+    tutor           = Tutorserializer(read_only=True)
+    filled_stats    = serializers.SerializerMethodField()
+    reprimand_stats = serializers.SerializerMethodField()
+
     class Meta:
-        model = Group
-        fields = ('id', 'name', 'education_language','tutor')
+        model  = Group
+        fields = (
+            'id', 'name', 'education_language',
+            'tutor', 'filled_stats', 'reprimand_stats'
+        )
+
+    def get_reprimand_stats(self, group):
+        total_reprimands       = Reprimand.objects.filter(student__group=group).count()
+        students_with_reprimand = Student.objects.filter(
+            group=group,
+            reprimands__isnull=False
+        ).distinct().count()
+
+        return {
+            'total_reprimands'       : total_reprimands,
+            'students_with_reprimand': students_with_reprimand,
+        }
+
+    def get_filled_stats(self, group):
+        students = Student.objects.filter(group=group).annotate(
+            has_detail          = Exists(StudentDetail.objects.filter(student=OuterRef('pk'))),
+            has_health          = Exists(HealthInfo.objects.filter(student=OuterRef('pk'))),
+            has_family          = Exists(FamilySocialStatus.objects.filter(student=OuterRef('pk'))),
+            has_dormitory       = Exists(Dormitory.objects.filter(student=OuterRef('pk'))),
+            has_language        = Exists(LanguageInfo.objects.filter(student=OuterRef('pk'))),
+            has_achievement     = Exists(Achievement.objects.filter(student=OuterRef('pk'))),
+            has_reprimand       = Exists(Reprimand.objects.filter(student=OuterRef('pk'))),
+            has_family_member   = Exists(FamilyMember.objects.filter(student=OuterRef('pk'))),
+            has_interest        = Exists(Interest.objects.filter(student=OuterRef('pk'))),
+            has_social_registry = Exists(SocialRegistry.objects.filter(student=OuterRef('pk'))),
+            has_gifted          = Exists(Gifted.objects.filter(student=OuterRef('pk'))),
+            has_protection      = Exists(ProtectionOrder.objects.filter(student=OuterRef('pk'))),
+            has_social_link     = Exists(SocialLink.objects.filter(student=OuterRef('pk'))),
+        )
+
+        total = students.count()
+        if total == 0:
+            return {
+                'total_students'        : 0,
+                'toliq_toldirilgan_soni': 0,
+                'toliq_toldirilgan_foiz': 0.0,
+                'sections'              : {}
+            }
+
+        def foiz(n):
+            return round(n / total * 100, 1)
+
+        toliq_soni = students.filter(
+            has_detail=True, has_health=True,    has_family=True,
+            has_dormitory=True, has_language=True, has_achievement=True,
+            has_reprimand=True, has_family_member=True, has_interest=True,
+        ).count()
+
+        return {
+            'total_students'        : total,
+            'toliq_toldirilgan_soni': toliq_soni,
+            'toliq_toldirilgan_foiz': foiz(toliq_soni),
+            'sections': {
+                'asosiy_malumot'    : foiz(students.filter(has_detail=True).count()),
+                'soglik'            : foiz(students.filter(has_health=True).count()),
+                'oilaviy_holat'     : foiz(students.filter(has_family=True).count()),
+                'turar_joy'         : foiz(students.filter(has_dormitory=True).count()),
+                'til_bilimi'        : foiz(students.filter(has_language=True).count()),
+                'yutuqlar'          : foiz(students.filter(has_achievement=True).count()),
+                'hayfnoma'          : foiz(students.filter(has_reprimand=True).count()),
+                'oila_azolari'      : foiz(students.filter(has_family_member=True).count()),
+                'qiziqishlar'       : foiz(students.filter(has_interest=True).count()),
+                'ijtimoiy_reyestr'  : foiz(students.filter(has_social_registry=True).count()),
+                'iqtidorli'         : foiz(students.filter(has_gifted=True).count()),
+                'himoya_orderi'     : foiz(students.filter(has_protection=True).count()),
+                'ijtimoiy_havolalar': foiz(students.filter(has_social_link=True).count()),
+            }
+        }
 
 class Roleserializer(serializers.ModelSerializer):
     class Meta:
@@ -202,7 +285,7 @@ class StudentSerializer1(serializers.ModelSerializer):
 class StudentSerializer(serializers.ModelSerializer):
     group_name = serializers.CharField(source='group.name', read_only=True)
     filled = serializers.SerializerMethodField()
-
+    reprimand_count = serializers.SerializerMethodField()
     p_country = serializers.CharField(max_length=50, required=False, allow_blank=True)
     p_region = serializers.CharField(max_length=50, required=False, allow_blank=True)
     p_district = serializers.CharField(max_length=50, required=False, allow_blank=True)
@@ -233,11 +316,14 @@ class StudentSerializer(serializers.ModelSerializer):
             't_latitude', 't_longitude',
             'is_orphanage_student', 'is_military_family',
             'education_type', 'is_pregnant',
-            'behavior_issues', 'is_adult',
+            'behavior_issues', 'is_adult','reprimand_count'
         ]
         extra_kwargs = {
             'group': {'write_only': True},
         }
+
+    def get_reprimand_count(self, student):
+            return student.reprimands.count()
 
     def get_filled(self, obj):
         from .utils import calculate_student_completion
@@ -304,9 +390,6 @@ class StudentSerializer(serializers.ModelSerializer):
         return data
 
 
-# ─────────────────────────────────────────────
-# FILE LI SERIALIZERS  (to_representation orqali)
-# ─────────────────────────────────────────────
 class AchievementSerializer(FileUrlMixin, serializers.ModelSerializer):
     class Meta:
         model = Achievement

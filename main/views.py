@@ -19,6 +19,7 @@ from .hemis_get_student import HEMISStudentImportService
 from rest_framework_simplejwt.tokens import RefreshToken
 from .persmission import *
 from .filters import *
+from django.db.models import Count, Exists, OuterRef
 
 ROLE_TUTOR_ID = 2
 ROLE_ADMIN_ID = 1
@@ -107,7 +108,6 @@ def login(request):
         'message':  "Login muvaffaqiyatli",
         'data':     serializer.data,
         'access':   str(refresh.access_token),
-        'refresh':  str(refresh),
         'username': user.username,
     }, status=status.HTTP_200_OK)
 
@@ -340,6 +340,7 @@ class GroupsGetApiView(APIView):
         user               = request.user
         search             = request.query_params.get('search')
         education_language = request.query_params.get('education_language')
+        sort_reprimand     = request.query_params.get('sort_reprimand')
 
         def apply_filters(queryset):
             if search:
@@ -358,22 +359,31 @@ class GroupsGetApiView(APIView):
             except Direction.DoesNotExist:
                 return fail("Yo'nalish topilmadi", status.HTTP_404_NOT_FOUND)
 
-            groups = apply_filters(Group.objects.filter(direction=direction))
-            ser    = GroupSerializer(groups, many=True)
+            groups = apply_filters(
+                Group.objects.filter(direction=direction).select_related('tutor')
+            )
+            ser = GroupSerializer(
+                groups, many=True,
+                context={'request': request, 'sort_reprimand': sort_reprimand}  # ← context
+            )
             return ok("Guruhlar ro'yxati", ser.data)
 
         elif user.role.id in [2, 3, 4]:
             if not user.faculty:
                 return fail("Sizga biriktirilgan fakultet yo'q", status.HTTP_404_NOT_FOUND)
 
-            groups = apply_filters(Group.objects.filter(direction__faculty=user.faculty))
-            ser    = GroupSerializer(groups, many=True)
+            groups = apply_filters(
+                Group.objects.filter(direction__faculty=user.faculty).select_related('tutor')
+            )
+            ser = GroupSerializer(
+                groups, many=True,
+                context={'request': request, 'sort_reprimand': sort_reprimand}
+            )
             return ok("Sizning fakultetingiz guruhlari", ser.data)
 
         return fail("Ruxsat yo'q", status.HTTP_403_FORBIDDEN)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 PREFETCH_FIELDS = [
     'achievements', 'health_info', 'language_info',
     'social_links', 'reprimands', 'family_social_status',
@@ -448,9 +458,7 @@ class StudentCRUD(APIView):
             return fail(f.errors)
         students = f.qs
 
-        # ── PDF export ─────────────────────────────────────────────────────────
-        # ?export=pdf          → qisqa hisobot (A4 portrait)
-        # ?export=pdf&mode=full → to'liq hisobot (A4 landscape)
+
         if request.query_params.get("export") == "pdf":
             return generate_student_pdf(students, request)
 
@@ -712,7 +720,6 @@ class ProtectionOrderCRUD(BaseCRUD):
     related_name       = 'protection_orders'
     permission_classes = [IsAuthenticated]
 
-
 class RoleApiview(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -725,6 +732,117 @@ class RoleApiview(APIView):
             'data':    ser.data,
         })
 
+class Statistika(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+        user = request.user
+        try:
+            user = CustomUser.objects.get(id=user.id)
+        except CustomUser.DoesNotExist:
+            return Response({
+                'success': False,
+                'message':"user mavjud emas"
+            })
+        if user.role.id == 1:
+            faculty = Faculty.objects.count()
+            direction = Direction.objects.count()
+            group = Group.objects.count()
+            student = Student.objects.count()
+            return Response({
+                'success': True,
+                'message':'fakultet, yo"nalishlar, guruhlar va studentlar soni admin uchun',
+                'faculty': faculty,
+                'direction': direction,
+                'group': group,
+                'student': student,
+            })
+
+        elif user.role.id == 2 or 3:
+            if not user.faculty:
+                return Response({
+                    'success': False,
+                    'message': "Sizga biriktirilgan fakultet yo'q"
+                })
+
+            faculty = user.faculty
+            directions = Direction.objects.filter(faculty=faculty)
+            groups = Group.objects.filter(direction__faculty=faculty)
+            students = Student.objects.filter(group__direction__faculty=faculty)
+
+            role_label = "Dekan" if user.role.id == 3 else "Zam dekan"
+            return Response({
+                'success': True,
+                'message': f"{role_label} uchun statistika",
+                'faculty': faculty.name,
+                'direction': directions.count(),
+                'group': groups.count(),
+                'student': students.count(),
+            })
+
+        elif role.id == 2:
+            groups = Group.objects.filter(tutor=user)
+            students = Student.objects.filter(group__in=groups)
+
+            return Response({
+                'success': True,
+                'message': "Tutor uchun statistika",
+                'group': groups.count(),
+                'student': students.count(),
+            })
+
+        return Response({
+            'success': False,
+            'message': "Sizning rolingiz uchun statistika mavjud emas"
+        })
+
+class ReprimandStudentGet(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        if user.role.id == 1:
+            students = Student.objects.all()
+
+        elif user.role.id in [2, 3, 4]:
+            if not user.faculty:
+                return fail("Sizga biriktirilgan fakultet yo'q", status.HTTP_404_NOT_FOUND)
+            students = Student.objects.filter(group__direction__faculty=user.faculty)
+
+        elif user.role.id == 2:  # tutor
+            students = Student.objects.filter(group__tutor=user)
+
+        else:
+            return fail("Ruxsat yo'q", status.HTTP_403_FORBIDDEN)
+
+        students = (
+            students
+            .annotate(reprimand_count=Count('reprimands'))
+            .filter(reprimand_count__gt=0)
+            .select_related('group')
+            .order_by('-reprimand_count')
+        )
+
+        data = [
+            {
+                'id'             : s.id,
+                'first_name'     : s.first_name,
+                'last_name'      : s.last_name,
+                'third_name'     : s.third_name,
+                'hemis_id'       : s.hemis_id,
+                'group'          : s.group.name,
+                'course'         : s.course,
+                'reprimand_count': s.reprimand_count,
+            }
+            for s in students
+        ]
+
+        return Response({
+            'success'         : True,
+            'message'         : "Hayfisand olgan talabalar",
+            'total_students'  : students.count(),   # nechta talaba hayfisand olgan
+            'data'            : data,
+        })
 
 class categoryInterstView(viewsets.ModelViewSet):
     serializer_class   = CategoryInterestSerializer
