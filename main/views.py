@@ -524,7 +524,7 @@ class StudentCRUD(APIView):
         return ok("Student o'chirildi", None)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+
 def ok(message, data, code=status.HTTP_200_OK):
     return Response({'success': True, 'message': message, 'data': data}, status=code)
 
@@ -540,7 +540,6 @@ def get_student(student_id):
         return None, fail("Student topilmadi", status.HTTP_404_NOT_FOUND)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 class BaseCRUD(APIView):
     permission_classes = [IsAuthenticated]
     serializer_class   = None
@@ -651,7 +650,6 @@ class BaseCRUD(APIView):
         return ok("O'chirildi", None)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 class StudentDetailCRUD(BaseCRUD):
     serializer_class   = StudentDetailSerializer
     related_name       = 'details'

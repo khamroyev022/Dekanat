@@ -250,9 +250,7 @@ class Groupserializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'education_code', 'education_language']
 
 
-# ─────────────────────────────────────────────
-# STUDENT SERIALIZERS
-# ─────────────────────────────────────────────
+
 class StudentDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = StudentDetail
@@ -264,22 +262,9 @@ class StudentDetailSerializer(serializers.ModelSerializer):
             'is_orphanage_student', 'is_military_family',
             'education_type', 'is_pregnant',
             'behavior_issues', 'is_adult',
-            'created_at',
+            'created_at','passport_pdf'
         ]
 
-
-class StudentSerializer1(serializers.ModelSerializer):
-    group = Groupserializer(read_only=True)
-
-    class Meta:
-        model = Student
-        fields = [
-            'id', 'first_name', 'last_name', 'third_name',
-            'birthday', 'gender', 'country',
-            'image', 'image_hemis',
-            'avg_gpa', 'course', 'hemis_id',
-            'email', 'phone', 'group','pnfl'
-        ]
 
 
 class StudentSerializer(serializers.ModelSerializer):
@@ -300,7 +285,6 @@ class StudentSerializer(serializers.ModelSerializer):
     is_pregnant = serializers.BooleanField(required=False, default=False)
     behavior_issues = serializers.BooleanField(required=False, default=False)
     is_adult = serializers.BooleanField(required=False, default=False)
-
     class Meta:
         model = Student
         fields = [
@@ -310,6 +294,7 @@ class StudentSerializer(serializers.ModelSerializer):
             'avg_gpa', 'course', 'hemis_id',
             'email', 'phone',
             'group', 'group_name',
+            'pnfl',
             'filled',
             'p_country', 'p_region', 'p_district',
             't_country', 't_region', 't_district',

@@ -110,7 +110,7 @@ def update_students(request):
     )
     result = service.run(
         start_page=request.data.get("start_page", 1),
-        max_pages=request.data.get("max_pages", 583),
+        max_pages=request.data.get("max_pages", 5),
     )
     return Response({"message": "Yangilash muvaffaqiyatli yakunlandi", **result})
 
@@ -274,12 +274,10 @@ class GroupsGetApiView(APIView):
         return ok(msg, ser.data)
 
 
-# ─────────────────────────────── Students ────────────────────────────────────
 class StudentCRUD(APIView):
     permission_classes = [IsAuthenticated]
 
     def _get_base_qs(self, user, group_id=None):
-        """Ruxsatga qarab asosiy queryset qaytaradi."""
         if group_id:
             try:
                 group = Group.objects.get(id=group_id)
@@ -309,7 +307,14 @@ class StudentCRUD(APIView):
     def get(self, request):
         user       = request.user
         student_id = request.query_params.get('student_id')
+        faculty_id = request.query_params.get('faculty_id')
         group_id   = request.query_params.get('group_id')
+
+        if faculty_id:
+            try:
+                faculty = Faculty.objects.get(id=faculty_id)
+            except Faculty.DoesNotExist:
+                return fail("Fakultet topilmadi", status.HTTP_404_NOT_FOUND)
 
         if student_id:
             try:
@@ -317,20 +322,21 @@ class StudentCRUD(APIView):
             except Student.DoesNotExist:
                 return fail("Student topilmadi", status.HTTP_404_NOT_FOUND)
 
-            if user.role.id in STAFF_ROLE_IDS:
-                if not user.faculty or student.group.direction.faculty != user.faculty:
-                    return fail("Bu student sizning fakultetingizga tegishli emas", status.HTTP_403_FORBIDDEN)
-            elif user.role.id != ROLE_ADMIN_ID:
+            if user.role.id == ROLE_ADMIN_ID:
+                students = Student.objects.filter(group__direction__faculty=faculty)
+            elif user.role.id in STAFF_ROLE_IDS:
+                if not user.faculty or user.faculty != faculty:
+                    return fail("Bu fakultet sizga tegishli emas", status.HTTP_403_FORBIDDEN)
+                students = faculty_students(user)
+            else:
                 return fail("Ruxsat yo'q", status.HTTP_403_FORBIDDEN)
-
-            return ok("Student ma'lumoti", StudentFullSerializer(student).data)
 
         students, err = self._get_base_qs(user, group_id)
         if err:
             return err
 
         students = students.annotate(
-            reprimand_count=Count('reprimands')  # ← har student uchun count
+            reprimand_count=Count('reprimands')
         ).prefetch_related(*PREFETCH_FIELDS)
 
         f = StudentFilter(request.query_params, queryset=students)
@@ -392,7 +398,6 @@ class StudentCRUD(APIView):
         return ok("Student o'chirildi", None)
 
 
-# ─────────────────────────────── BaseCRUD ────────────────────────────────────
 class BaseCRUD(APIView):
     permission_classes = [IsAuthenticated]
     serializer_class   = None
@@ -474,7 +479,6 @@ class BaseCRUD(APIView):
         return ok("O'chirildi", None)
 
 
-# ─────────────────────────────── BaseCRUD subclasslar ────────────────────────
 class StudentDetailCRUD(BaseCRUD):
     serializer_class = StudentDetailSerializer
     related_name     = 'details'

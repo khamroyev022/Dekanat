@@ -142,10 +142,9 @@ class HEMISStudentUpdate:
 
         hemis_id = str(item.get("student_id_number") or item.get("id") or "")
 
-        # Umumiy faculty/direction/group ma'lumotlarini olish
         faculty_name = department.get("name", "").strip() or "Noma'lum fakultet"
         faculty_code = department.get("code", "").strip() or "unknown"
-        faculty_name, faculty_code = self._normalize_faculty(faculty_name, faculty_code)  # ← birlashtirish
+        faculty_name, faculty_code = self._normalize_faculty(faculty_name, faculty_code)
 
         direction_name = specialty.get("name", "").strip() or "Noma'lum yo'nalish"
         direction_code = specialty.get("code", "").strip() or f"dir-{specialty.get('id', '0')}"
@@ -154,7 +153,7 @@ class HEMISStudentUpdate:
         education_language = education_lang.get("name", "").strip() or "Noma'lum"
         education_code = education_lang.get("code", "").strip() or "unknown"
 
-        # Faculty
+        # ── Faculty ───────────────────────────────────────────────────────────────
         faculty, _ = Faculty.objects.get_or_create(
             code=faculty_code,
             defaults={"name": faculty_name}
@@ -163,43 +162,56 @@ class HEMISStudentUpdate:
             faculty.name = faculty_name
             faculty.save(update_fields=["name"])
 
-        # Direction
-        direction, _ = Direction.objects.get_or_create(
-            code=direction_code,
-            defaults={"name": direction_name, "faculty": faculty}
-        )
-        direction_changed = False
-        if direction.name != direction_name:
-            direction.name = direction_name
-            direction_changed = True
-        if direction.faculty_id != faculty.id:
-            direction.faculty = faculty
-            direction_changed = True
-        if direction_changed:
-            direction.save()
+        # ── Direction (TUZATILDI: filter().first() bilan) ─────────────────────────
+        direction = Direction.objects.filter(code=direction_code).first()
 
-        # Group
-        group_obj, _ = Group.objects.get_or_create(
-            name=group_name,
-            defaults={
-                "education_code": education_code,
-                "education_language": education_language,
-                "direction": direction,
-            }
-        )
-        group_changed = False
-        if group_obj.education_code != education_code:
-            group_obj.education_code = education_code
-            group_changed = True
-        if group_obj.education_language != education_language:
-            group_obj.education_language = education_language
-            group_changed = True
-        if group_obj.direction_id != direction.id:
-            group_obj.direction = direction
-            group_changed = True
-        if group_changed:
-            group_obj.save()
+        if direction is None:
+            # Yangi direction yaratish
+            direction = Direction.objects.create(
+                code=direction_code,
+                name=direction_name,
+                faculty=faculty,
+            )
+        else:
+            # Mavjudini yangilash
+            direction_changed = False
+            if direction.name != direction_name:
+                direction.name = direction_name
+                direction_changed = True
+            if direction.faculty_id != faculty.id:
+                direction.faculty = faculty
+                direction_changed = True
+            if direction_changed:
+                direction.save()
 
+            # ⚠️ Dublikatlarni tozalash (agar bir xil code li ko'p yozuv bo'lsa)
+            Direction.objects.filter(code=direction_code).exclude(id=direction.id).delete()
+
+        # ── Group ─────────────────────────────────────────────────────────────────
+        group_obj = Group.objects.filter(name=group_name).first()
+
+        if group_obj is None:
+            group_obj = Group.objects.create(
+                name=group_name,
+                education_code=education_code,
+                education_language=education_language,
+                direction=direction,
+            )
+        else:
+            group_changed = False
+            if group_obj.education_code != education_code:
+                group_obj.education_code = education_code
+                group_changed = True
+            if group_obj.education_language != education_language:
+                group_obj.education_language = education_language
+                group_changed = True
+            if group_obj.direction_id != direction.id:
+                group_obj.direction = direction
+                group_changed = True
+            if group_changed:
+                group_obj.save()
+
+        # ── Student ───────────────────────────────────────────────────────────────
         if self.update_only:
             try:
                 student = Student.objects.get(hemis_id=hemis_id)
@@ -218,9 +230,8 @@ class HEMISStudentUpdate:
             student.group = group_obj
             student.image_hemis = item.get("image")
             student.save()
-
         else:
-            student, created = Student.objects.update_or_create(
+            student, _ = Student.objects.update_or_create(
                 hemis_id=hemis_id,
                 defaults={
                     "first_name": (item.get("first_name") or "").strip(),

@@ -226,6 +226,7 @@ class StudentDetail(models.Model):
     is_pregnant = models.BooleanField(default=False)
     behavior_issues = models.BooleanField(default=False)
     is_adult = models.BooleanField(default=False)
+    passport_pdf =models.FileField(upload_to='passport_pdfs/',null=True,blank=True)
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='details')
     created_at = models.DateTimeField(auto_now_add=True)
 
