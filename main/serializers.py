@@ -262,7 +262,9 @@ class StudentDetailSerializer(serializers.ModelSerializer):
             'is_orphanage_student', 'is_military_family',
             'education_type', 'is_pregnant',
             'behavior_issues', 'is_adult',
-            'created_at','passport_pdf'
+            'created_at','passport_pdf','is_amount','is_amount_file',
+            'pnfl',
+
         ]
 
 
@@ -294,7 +296,6 @@ class StudentSerializer(serializers.ModelSerializer):
             'avg_gpa', 'course', 'hemis_id',
             'email', 'phone',
             'group', 'group_name',
-            'pnfl',
             'filled',
             'p_country', 'p_region', 'p_district',
             't_country', 't_region', 't_district',
@@ -551,18 +552,17 @@ class StudentFullSerializer(serializers.ModelSerializer):
     filled               = serializers.SerializerMethodField()
     details              = StudentDetailSerializer(many=True, read_only=True)
     achievements         = AchievementSerializer(many=True, read_only=True)
-    health_info          = HealthInfoSerializer(many=True, read_only=True)
+    health_info          = HealthInfoSerializer(read_only=True)
     language_info        = LanguageInfoSerializer(many=True, read_only=True)
     social_links         = SocialLinkSerializer(many=True, read_only=True)
     reprimands           = ReprimandSerializer(many=True, read_only=True)
-    family_social_status = FamilySocialStatusSerializer(many=True, read_only=True)
+    family_social_status = FamilySocialStatusSerializer(read_only=True)
     family_members       = FamilyMemberSerializer(many=True, read_only=True)
     interests            = InterestSerializer(many=True, read_only=True)
     social_registries    = SocialRegistrySerializer(many=True, read_only=True)
-    dormitories          = DormitorySerializer(many=True, read_only=True)
+    dormitories          = DormitorySerializer( read_only=True)
     gifteds              = GiftedSerializer(many=True, read_only=True)
     protection_orders    = ProtectionOrderSerializer(many=True, read_only=True)
-
     class Meta:
         model = Student
         fields = [

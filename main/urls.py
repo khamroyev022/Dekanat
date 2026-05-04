@@ -1,6 +1,7 @@
 from django.urls import path
-from .view1 import *
+from .view import *
 from rest_framework.routers import DefaultRouter
+from audit.views import *
 router = DefaultRouter()
 router.register('users',CreateUserViewSet,basename='create_user'),
 router.register('category',categoryInterstView)
@@ -30,6 +31,7 @@ urlpatterns = [
     path('faculty/direction/group/student/protection-order/',   ProtectionOrderCRUD.as_view()),
     path('statistika/',Statistika.as_view()),
     path('student-reprimands/',ReprimandStudentGet.as_view()),
+    path('audit-log/',AuditLogListView.as_view()),
 ]+ router.urls
 
 

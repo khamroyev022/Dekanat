@@ -1,9 +1,10 @@
 from PIL.ImageCms import Direction
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
-from django.db.models.signals import post_delete, pre_save
+from django.db.models.signals import post_delete, pre_save, post_save
 from django.dispatch import receiver
 import os
+from datetime import date  # ← qo'shing
 
 
 
@@ -178,7 +179,6 @@ class Direction(models.Model):
     name = models.CharField(max_length=150)
     code = models.CharField(max_length=10)
     faculty = models.ForeignKey(Faculty, on_delete=models.PROTECT, related_name='directions')
-
     def __str__(self):
         return self.name
 
@@ -207,7 +207,6 @@ class Student(models.Model):
     email = models.EmailField(blank=True)
     phone = models.CharField(max_length=20, blank=True)
     group = models.ForeignKey(Group, on_delete=models.PROTECT, related_name='students')
-    pnfl = models.CharField(null=True, blank=True, max_length=50)
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
 
@@ -228,8 +227,10 @@ class StudentDetail(models.Model):
     is_adult = models.BooleanField(default=False)
     passport_pdf =models.FileField(upload_to='passport_pdfs/',null=True,blank=True)
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='details')
+    is_amount = models.BooleanField()
+    is_amount_file = models.FileField(upload_to='amount/',null=True,blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-
+    pnfl = models.CharField(null=True, blank=True, max_length=50)
     def __str__(self):
         return f"{self.student} - {self.p_country}"
 
@@ -542,3 +543,31 @@ def auto_delete_old_file_on_update(sender, instance, **kwargs):
                     os.remove(old_file.path)
             except Exception:
                 pass
+
+@receiver(post_save, sender=Student)
+def auto_set_is_adult(sender, instance, **kwargs):
+    """
+    Talaba saqlanganda birthday tekshiriladi,
+    18 ga to'lgan bo'lsa is_adult = True
+    """
+    if not instance.birthday:
+        return
+
+    today    = date.today()
+    b        = instance.birthday
+    is_adult = (
+        today.year - b.year -
+        ((today.month, today.day) < (b.month, b.day))
+    ) >= 18
+
+    detail = instance.details.first()
+    if detail:
+        if detail.is_adult != is_adult:
+            detail.is_adult = is_adult
+            detail.save(update_fields=['is_adult'])
+    else:
+        StudentDetail.objects.create(
+            student=instance,
+            is_adult=is_adult,
+            is_amount=False,
+        )
