@@ -1,4 +1,3 @@
-# filters.py
 
 import django_filters
 from django.db.models import Q
@@ -7,7 +6,6 @@ from .models import *
 
 class StudentFilter(django_filters.FilterSet):
 
-    # ───────── QIDIRUV ─────────
     search = django_filters.CharFilter(method='search_filter')
 
     gender  = django_filters.ChoiceFilter(choices=GENDER_CHOICES)

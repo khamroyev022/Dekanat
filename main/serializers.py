@@ -8,8 +8,7 @@ from .models import (
     Dormitory, Gifted, ProtectionOrder
 )
 from django.db.models import Exists, OuterRef, Count
-
-
+from rest_framework.exceptions import ValidationError
 class FileUrlMixin:
 
     def get_file_url(self, obj, field_name='file'):
@@ -93,13 +92,24 @@ class CreateUserSerializer(serializers.ModelSerializer):
         if groups:
             user.groups.set(groups)
 
-        role_name = getattr(user.role, 'name', '') or ''
-        if group_ids and role_name.lower().strip() == 'tyutor':
-            Group.objects.filter(id__in=group_ids).update(tutor=user)
+        role_name = (getattr(user.role, 'name', '') or '').lower().strip()
+        if group_ids and role_name == 'tyutor':
+            already_assigned = Group.objects.filter(
+                id__in=group_ids
+            ).exclude(tutor=None)
 
+            if already_assigned.exists():
+                names = list(already_assigned.values_list('name', flat=True))
+                raise ValidationError({
+                    'group_ids': f"Quyidagi guruhlar band: {names}"
+                })
+
+            Group.objects.filter(id__in=group_ids).update(tutor=user)
         return user
 
     def update(self, instance, validated_data):
+        from rest_framework.exceptions import ValidationError
+
         user_permissions = validated_data.pop('user_permissions', [])
         groups = validated_data.pop('groups', [])
         group_ids = validated_data.pop('group_ids', [])
@@ -117,10 +127,32 @@ class CreateUserSerializer(serializers.ModelSerializer):
         if groups:
             instance.groups.set(groups)
 
-        if getattr(instance.role, 'name', None) == 'tutor':
-            Group.objects.filter(tutor=instance).update(tutor=None)
+        role_name = (getattr(instance.role, 'name', '') or '').lower().strip()
+
+        if role_name == 'tyutor':  # ✅ ROLE_CHOICES dagi qiymat bilan mos
             if group_ids:
+                # Boshqa tutorga biriktirilgan guruhlarni tekshirish
+                already_assigned = Group.objects.filter(
+                    id__in=group_ids
+                ).exclude(
+                    tutor=None
+                ).exclude(
+                    tutor=instance  # o'zining guruhlari OK
+                )
+
+                if already_assigned.exists():
+                    names = list(already_assigned.values_list('name', flat=True))
+                    raise ValidationError({
+                        'group_ids': f"Quyidagi guruhlar boshqa tutorga biriktirilgan: {names}"
+                    })
+
+                # Avvalgi guruhlaridan tutorni olib tashlash
+                Group.objects.filter(tutor=instance).update(tutor=None)
+                # Yangi guruhlarni biriktirish
                 Group.objects.filter(id__in=group_ids).update(tutor=instance)
+            else:
+                # group_ids bo'sh kelsa — tutorni hamma guruhlardan olib tashlash
+                Group.objects.filter(tutor=instance).update(tutor=None)
 
         return instance
 
@@ -270,25 +302,29 @@ class StudentDetailSerializer(serializers.ModelSerializer):
 
 
 class StudentSerializer(serializers.ModelSerializer):
-    group_name = serializers.CharField(source='group.name', read_only=True)
-    filled = serializers.SerializerMethodField()
+    group_name      = serializers.CharField(source='group.name', read_only=True)
+    filled          = serializers.SerializerMethodField()
     reprimand_count = serializers.SerializerMethodField()
-    p_country = serializers.CharField(max_length=50, required=False, allow_blank=True)
-    p_region = serializers.CharField(max_length=50, required=False, allow_blank=True)
-    p_district = serializers.CharField(max_length=50, required=False, allow_blank=True)
-    t_country = serializers.CharField(max_length=50, required=False, allow_blank=True)
-    t_region = serializers.CharField(max_length=50, required=False, allow_blank=True)
-    t_district = serializers.CharField(max_length=50, required=False, allow_blank=True)
-    t_latitude = serializers.CharField(max_length=30, required=False, allow_blank=True)
-    t_longitude = serializers.CharField(max_length=30, required=False, allow_blank=True)
+
+    reprimand_stats = serializers.SerializerMethodField()
+
+    p_country            = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    p_region             = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    p_district           = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    t_country            = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    t_region             = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    t_district           = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    t_latitude           = serializers.CharField(max_length=30, required=False, allow_blank=True)
+    t_longitude          = serializers.CharField(max_length=30, required=False, allow_blank=True)
     is_orphanage_student = serializers.BooleanField(required=False, default=False)
-    is_military_family = serializers.BooleanField(required=False, default=False)
-    education_type = serializers.CharField(max_length=30, required=False, default='nomalum')
-    is_pregnant = serializers.BooleanField(required=False, default=False)
-    behavior_issues = serializers.BooleanField(required=False, default=False)
-    is_adult = serializers.BooleanField(required=False, default=False)
+    is_military_family   = serializers.BooleanField(required=False, default=False)
+    education_type       = serializers.CharField(max_length=30, required=False, default='nomalum')
+    is_pregnant          = serializers.BooleanField(required=False, default=False)
+    behavior_issues      = serializers.BooleanField(required=False, default=False)
+    is_adult             = serializers.BooleanField(required=False, default=False)
+
     class Meta:
-        model = Student
+        model  = Student
         fields = [
             'id', 'first_name', 'last_name', 'third_name',
             'birthday', 'gender', 'country',
@@ -302,18 +338,30 @@ class StudentSerializer(serializers.ModelSerializer):
             't_latitude', 't_longitude',
             'is_orphanage_student', 'is_military_family',
             'education_type', 'is_pregnant',
-            'behavior_issues', 'is_adult','reprimand_count'
+            'behavior_issues', 'is_adult',
+            'reprimand_count',
+            # ── yangi ──
+            'reprimand_stats',
         ]
         extra_kwargs = {
             'group': {'write_only': True},
         }
 
     def get_reprimand_count(self, student):
-            return student.reprimands.count()
+        return student.reprimands.count()
 
     def get_filled(self, obj):
         from .utils import calculate_student_completion
         return calculate_student_completion(obj)
+
+
+    def get_reprimand_stats(self, obj):
+        count = obj.reprimands.count()
+        return {
+            'total_reprimands': count,
+            'has_reprimand'   : count > 0,
+        }
+    # ───────────────────────────────────────────
 
     def create(self, validated_data):
         detail_fields = [
@@ -356,23 +404,23 @@ class StudentSerializer(serializers.ModelSerializer):
         return instance
 
     def to_representation(self, instance):
-        data = super().to_representation(instance)
+        data   = super().to_representation(instance)
         detail = instance.details.first()
         if detail:
-            data['p_country'] = detail.p_country
-            data['p_region'] = detail.p_region
-            data['p_district'] = detail.p_district
-            data['t_country'] = detail.t_country
-            data['t_region'] = detail.t_region
-            data['t_district'] = detail.t_district
-            data['t_latitude'] = detail.t_latitude
-            data['t_longitude'] = detail.t_longitude
+            data['p_country']            = detail.p_country
+            data['p_region']             = detail.p_region
+            data['p_district']           = detail.p_district
+            data['t_country']            = detail.t_country
+            data['t_region']             = detail.t_region
+            data['t_district']           = detail.t_district
+            data['t_latitude']           = detail.t_latitude
+            data['t_longitude']          = detail.t_longitude
             data['is_orphanage_student'] = detail.is_orphanage_student
-            data['is_military_family'] = detail.is_military_family
-            data['education_type'] = detail.education_type
-            data['is_pregnant'] = detail.is_pregnant
-            data['behavior_issues'] = detail.behavior_issues
-            data['is_adult'] = detail.is_adult
+            data['is_military_family']   = detail.is_military_family
+            data['education_type']       = detail.education_type
+            data['is_pregnant']          = detail.is_pregnant
+            data['behavior_issues']      = detail.behavior_issues
+            data['is_adult']             = detail.is_adult
         return data
 
 

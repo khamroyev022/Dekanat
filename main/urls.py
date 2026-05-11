@@ -1,5 +1,5 @@
 from django.urls import path
-from .view import *
+from .views import *
 from rest_framework.routers import DefaultRouter
 from audit.views import *
 router = DefaultRouter()
@@ -29,7 +29,7 @@ urlpatterns = [
     path('faculty/direction/group/student/dormitory/',          DormitoryCRUD.as_view()),
     path('faculty/direction/group/student/gifted/',             GiftedCRUD.as_view()),
     path('faculty/direction/group/student/protection-order/',   ProtectionOrderCRUD.as_view()),
-    path('statistika/',Statistika.as_view()),
+    path('statistics/',Statistika.as_view()),
     path('student-reprimands/',ReprimandStudentGet.as_view()),
     path('audit-log/',AuditLogListView.as_view()),
 ]+ router.urls

@@ -1,292 +1,93 @@
-
-
-import io
-from datetime import datetime
-from reportlab.pdfgen.canvas import Canvas
-
-from django.http import HttpResponse
-
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.units import mm
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import (
-    HRFlowable, Paragraph, SimpleDocTemplate,
-    Spacer, Table, TableStyle,
-)
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import inch
 
-import os, sys
-
-if sys.platform == "win32":
-    _FONT_REG  = "C:/Windows/Fonts/arial.ttf"
-    _FONT_BOLD = "C:/Windows/Fonts/arialbd.ttf"
-else:
-    _FONT_REG  = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-    _FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-
-pdfmetrics.registerFont(TTFont("DejaVu",     _FONT_REG))
-pdfmetrics.registerFont(TTFont("DejaVuBold", _FONT_BOLD))
-
-# ── Mapping lug'atlar ─────────────────────────────────────────────────────────
-INSTITUTE_NAME = "Buxoro davlat tibbiyot instituti"
-
-GENDER_MAP     = {"erkak": "Erkak", "ayol": "Ayol", "boshqa": "Boshqa"}
-EDUCATION_MAP  = {"grant": "Grant", "kontrakt": "Kontrakt", "nomalum": "Nomalum"}
-MARITAL_MAP    = {
-    "single": "Bo'ydoq", "married": "Turmush qurgan",
-    "divorced": "Ajrashgan", "widowed": "Beva",
-}
-ORPHAN_MAP     = {"none": "Yo'q", "orphan": "Yetim", "full_orphan": "Chin yetim"}
-DISABILITY_MAP = {"1": "1-guruh", "2": "2-guruh", "3": "3-guruh"}
-RESIDENCE_MAP  = {
-    "own_house": "O'z uyida", "relative": "Qarindoshinikida", "rented": "Ijarada",
-}
-FILTER_LABELS  = {
-    "search": "Qidiruv", "gender": "Jinsi", "course": "Kurs",
-    "country": "Mamlakat", "group": "Guruh", "direction": "Yo'nalish",
-    "faculty": "Fakultet", "gpa_min": "GPA (min)", "gpa_max": "GPA (max)",
-    "education_type": "Ta'lim turi", "is_orphanage_student": "Bolalar uyi",
-    "is_military_family": "Harbiy oila", "is_pregnant": "Homilador",
-    "behavior_issues": "Xulq muammosi", "is_adult": "Voyaga yetgan",
-    "disability": "Nogironlik", "health_status": "Sog'liq",
-    "disability_status": "Nogironlik guruhi", "has_dormitory": "Yotoqxona",
-    "residence_type": "Turar joy", "marital_status": "Oilaviy holat",
-    "is_orphan": "Yetimlik", "is_crime_prone": "Jinoyatga moyil",
-    "language_level": "Til darajasi", "language_status": "Til sertifikati",
-    "has_achievement": "Yutuqlar", "has_reprimand": "Tanbehlar",
-    "reprimand_status": "Tanbeh holati", "social_registry_status": "Ijtimoiy ro'yxat",
-    "is_gifted": "Istedodli", "has_protection_order": "Homiylik buyrug'i",
-}
+# Logoning manzilini belgilang
+LOGO_PATH = "path_to_logo.png"  # Buni logoning to‘g‘ri manzili bilan almashtiring
 
 
-# ── Ma'lumot yordamchilari ────────────────────────────────────────────────────
-def _detail(s, field, mapping=None):
-    try:
-        val = getattr(s.details.all()[0], field, "") or ""
-        return mapping.get(val, val) if mapping else ("Ha" if val else "Yo'q")
-    except (IndexError, AttributeError):
-        return ""
-
-def _family(s, field, mapping=None):
-    try:
-        val = getattr(s.family_social_status, field, "") or ""
-        return mapping.get(val, val) if mapping else ("Ha" if val else "Yo'q")
-    except Exception:
-        return ""
-
-def _health(s, field, mapping=None):
-    try:
-        val = getattr(s.health_info, field, "")
-        if mapping:
-            return mapping.get(val or "", val or "")
-        return "Ha" if val else "Yo'q"
-    except Exception:
-        return ""
-
-def _dormitory(s):
-    try:
-        d = s.dormitory
-        if d.status:
-            parts = filter(None, [
-                d.dormitory_name, d.building,
-                f"{d.floor}-qavat" if d.floor else None,
-                f"{d.room}-xona"   if d.room  else None,
-            ])
-            return "Yotoqxona: " + ", ".join(parts)
-        label = RESIDENCE_MAP.get(d.residence_type, "")
-        return f"{label} | {d.address}" if d.address else label
-    except Exception:
-        return ""
-
-def _gifted(s):
-    try:
-        return "Ha" if any(g.status for g in s.gifteds.all()) else "Yo'q"
-    except Exception:
-        return ""
-
-def _social_reg(s):
-    try:
-        return "Faol" if any(r.status for r in s.social_registries.all()) else "Nofaol"
-    except Exception:
-        return ""
-
-
-# ── Ustunlar (nom, kenglik, qiymat_funksiya) ──────────────────────────────────
-SHORT_COLS = [
-    ("№",        6*mm, lambda i, s: str(i)),
-    ("Hemis ID", 22*mm, lambda i, s: s.hemis_id or ""),
-    ("F.I.SH.",  46*mm, lambda i, s: f"{s.last_name} {s.first_name} {s.third_name}".strip()),
-    ("Kurs",     10*mm, lambda i, s: s.course or ""),
-    ("Jinsi",    14*mm, lambda i, s: GENDER_MAP.get(s.gender, s.gender)),
-    ("Guruh",    28*mm, lambda i, s: s.group.name if s.group_id else ""),
-    ("GPA",      12*mm, lambda i, s: str(s.avg_gpa) if s.avg_gpa is not None else ""),
-    ("Telefon",  24*mm, lambda i, s: s.phone or ""),
-]
-
-FULL_COLS = SHORT_COLS + [
-    ("Ta'lim turi",      18*mm, lambda i, s: _detail(s, "education_type", EDUCATION_MAP)),
-    ("Yotoqxona/Manzil", 42*mm, lambda i, s: _dormitory(s)),
-    ("Oilaviy holat",    22*mm, lambda i, s: _family(s, "marital_status", MARITAL_MAP)),
-    ("Yetimlik",         18*mm, lambda i, s: _family(s, "is_orphan",      ORPHAN_MAP)),
-    ("Nogironlik",       18*mm, lambda i, s: _health(s, "disability")),
-    ("Nog. guruhi",      16*mm, lambda i, s: _health(s, "disability_status", DISABILITY_MAP)),
-    ("Homilador",        16*mm, lambda i, s: _detail(s, "is_pregnant")),
-    ("Harbiy oila",      16*mm, lambda i, s: _detail(s, "is_military_family")),
-    ("Xulq",             14*mm, lambda i, s: _detail(s, "behavior_issues")),
-    ("Istedodli",        16*mm, lambda i, s: _gifted(s)),
-    ("Ij. ro'yxat",      18*mm, lambda i, s: _social_reg(s)),
-]
-
-
-# ── Sahifa raqami canvas ──────────────────────────────────────────────────────
-class _NumberedCanvas(Canvas):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._saved_pages = []
-
-    def showPage(self):
-        self._saved_pages.append(dict(self.__dict__))
-        self._startPage()
-
-    def save(self):
-        total = len(self._saved_pages)
-        for i, snap in enumerate(self._saved_pages):
-            self.__dict__.update(snap)
-            w, _ = self._pagesize
-            self.setFont("DejaVu", 7)
-            self.setFillColor(colors.grey)
-            self.drawCentredString(w / 2, 7 * mm, f"{i + 1} / {total}")
-            Canvas.showPage(self)
-        Canvas.save(self)
-# ── Stillar ───────────────────────────────────────────────────────────────────
-def _styles():
-    return {
-        "title":  ParagraphStyle("t",  fontName="DejaVuBold", fontSize=13,
-                      alignment=TA_CENTER, spaceAfter=3,
-                      textColor=colors.HexColor("#1a237e")),
-        "sub":    ParagraphStyle("s",  fontName="DejaVu", fontSize=8,
-                      alignment=TA_CENTER, spaceAfter=2,
-                      textColor=colors.HexColor("#37474f")),
-        "meta_l": ParagraphStyle("ml", fontName="DejaVu", fontSize=7,
-                      alignment=TA_LEFT,  textColor=colors.HexColor("#546e7a")),
-        "meta_r": ParagraphStyle("mr", fontName="DejaVu", fontSize=7,
-                      alignment=TA_RIGHT, textColor=colors.HexColor("#546e7a")),
-        "filter": ParagraphStyle("f",  fontName="DejaVu", fontSize=7,
-                      textColor=colors.HexColor("#01579b"), spaceAfter=4),
-        "count":  ParagraphStyle("c",  fontName="DejaVuBold", fontSize=8,
-                      textColor=colors.HexColor("#1a237e"), spaceAfter=5),
-        "cell":   ParagraphStyle("cl", fontName="DejaVu",     fontSize=7, leading=9),
-        "cell_b": ParagraphStyle("cb", fontName="DejaVuBold", fontSize=7, leading=9),
-    }
-
-
-# ── Asosiy funksiya ───────────────────────────────────────────────────────────
 def generate_student_pdf(students, request):
     """
-    StudentCRUD.get() dan to'g'ridan-to'g'ri chaqiriladi.
+    Student CRUD get() metodidan chaqiriladi.
 
-    Params:
-        students  — filterlangan queryset (prefetch_related allaqachon bo'lishi kerak)
-        request   — DRF Request ob'ekti (user, query_params)
+    Parametrlar:
+        students: Filtrlangan queryset (prefetch_related ishlatilgan bo‘lishi kerak)
+        request: DRF Request obyekti (user, query_params)
 
-    Returns:
+    Natija:
         HttpResponse — Content-Type: application/pdf
     """
-    mode      = request.query_params.get("mode", "short").lower()
-    cols      = FULL_COLS if mode == "full" else SHORT_COLS
-    page_size = landscape(A4) if mode == "full" else A4
-    students  = list(students)          # queryset bir marta bajariladi
-    st        = _styles()
-    margin    = 14 * mm
-    buf       = io.BytesIO()
+    # Stil va layout sozlamalari
+    styles = get_styles()  # Sizda mavjud bo‘lgan `get_styles()` metodi bilan stilni sozlash
 
+    # PDF fayli uchun nomni sozlash
+    filename = f"students_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+
+    buffer = io.BytesIO()
+
+    # Oddiy hujjat shablonini yaratish
     doc = SimpleDocTemplate(
-        buf, pagesize=page_size,
-        leftMargin=margin, rightMargin=margin,
-        topMargin=margin, bottomMargin=18 * mm,
+        buffer,
+        pagesize=A4,
+        leftMargin=40,
+        rightMargin=40,
+        topMargin=50,
+        bottomMargin=50
     )
-    story = _build_story(students, cols, mode, page_size, margin, st, request)
-    doc.build(story, canvasmaker=_NumberedCanvas)
 
-    filename = f"students_{mode}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    resp = HttpResponse(buf.getvalue(), content_type="application/pdf")
-    resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-    return resp
-
-
-def _build_story(students, cols, mode, page_size, margin, st, request):
+    # PDF uchun hikoya (content)
     story = []
-    user  = request.user
 
-    # ─ Sarlavha ─
-    story.append(Paragraph(INSTITUTE_NAME, st["title"]))
-    story.append(Spacer(1, 1 * mm))
-    story.append(Paragraph(
-        f"Studentlar ro'yxati — {'To\'liq' if mode == 'full' else 'Qisqa'} hisobot",
-        st["sub"],
-    ))
-    story.append(HRFlowable(width="100%", thickness=1,
-                             color=colors.HexColor("#1a237e"), spaceAfter=3))
+    # Logoni hujjatga qo‘shish (yuqori chap burchak)
+    story.append(Spacer(1, 20))  # Joylashuvni sozlash uchun bo‘shliq
+    story.append(Paragraph("<img src='{}' width=200 height=50 />".format(LOGO_PATH), styles['title']))
 
-    # ─ Meta (sana / kim eksport qildi) ─
-    user_full    = " ".join(filter(None, [
-        user.last_name, user.first_name, getattr(user, "third_name", "")
-    ])) or user.username
-    role_display = getattr(user.role, "name", "") if user.role else ""
+    # Institut nomi
+    story.append(Paragraph("Buxoro Davlat Tibbiyot Instituti", styles['title']))
 
-    meta = Table([[
-        Paragraph(f"Sana: {datetime.now().strftime('%d.%m.%Y  %H:%M')}", st["meta_l"]),
-        Paragraph(f"Eksport qildi: {user_full}  ({role_display})", st["meta_r"]),
-    ]], colWidths=["50%", "50%"])
-    meta.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "TOP")]))
-    story.append(meta)
-    story.append(Spacer(1, 1 * mm))
+    # Joriy sana va foydalanuvchi ma'lumotlari
+    story.append(Spacer(1, 10))
+    story.append(Paragraph(f"Sana: {datetime.now().strftime('%d.%m.%Y %H:%M')}", styles['meta_l']))
+    user = request.user
+    story.append(Paragraph(f"Export qildi: {user.first_name} {user.last_name}", styles['meta_r']))
 
-    # ─ Filtr va son ─
-    story.append(Paragraph(f"Filtrlar: {_filter_text(request.query_params)}", st["filter"]))
-    story.append(Paragraph(f"Jami: {len(students)} ta student", st["count"]))
+    # Filtr parametrlarini qo‘shish (agar mavjud bo‘lsa)
+    filter_text = get_filter_text(request.query_params)
+    story.append(Spacer(1, 10))
+    story.append(Paragraph(f"Filtrlar: {filter_text}", styles['filter']))
 
-    # ─ Jadval ─
-    page_w    = page_size[0] - 2 * margin
-    col_w     = [c[1] for c in cols]
-    surplus   = page_w - sum(col_w)
-    if surplus > 0:
-        # Ortiq bo'shliqni F.I.SH. ustuniga berish
-        idx = next((i for i, c in enumerate(cols) if c[0] == "F.I.SH."), None)
-        if idx is not None:
-            col_w[idx] += surplus
+    # Jadval yaratish (talabalar ro‘yxati)
+    table_data = [["№", "F.I.SH.", "Guruh", "GPA", "Telefon"]]
+    for idx, student in enumerate(students):
+        table_data.append([
+            idx + 1,  # Raqam
+            f"{student.last_name} {student.first_name} {student.third_name}",  # F.I.SH.
+            student.group.name if student.group else "",  # Guruh
+            student.avg_gpa if student.avg_gpa is not None else "",  # GPA
+            student.phone or ""  # Telefon
+        ])
 
-    header = [Paragraph(c[0], st["cell_b"]) for c in cols]
-    rows   = [header] + [
-        [Paragraph(c[2](idx + 1, s), st["cell"]) for c in cols]
-        for idx, s in enumerate(students)
-    ]
-
-    tbl = Table(rows, colWidths=col_w, repeatRows=1)
-    tbl.setStyle(TableStyle([
-        ("BACKGROUND",     (0, 0), (-1, 0),  colors.HexColor("#1a237e")),
-        ("TEXTCOLOR",      (0, 0), (-1, 0),  colors.white),
-        ("FONTNAME",       (0, 0), (-1, 0),  "DejaVuBold"),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#e8eaf6")]),
-        ("GRID",           (0, 0), (-1, -1), 0.3, colors.HexColor("#b0bec5")),
-        ("VALIGN",         (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING",     (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING",  (0, 0), (-1, -1), 2),
-        ("LEFTPADDING",    (0, 0), (-1, -1), 3),
-        ("RIGHTPADDING",   (0, 0), (-1, -1), 3),
+    table = Table(table_data, colWidths=[40, 100, 60, 40, 50])
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a237e")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("TOPPADDING", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
     ]))
-    story.append(tbl)
-    return story
+    story.append(table)
 
+    # Hujjatni qurish va javobni qaytarish
+    doc.build(story)
 
-def _filter_text(params):
-    skip  = {"export", "mode", "page", "page_size"}
-    parts = [
-        f"{FILTER_LABELS.get(k, k)}: {v}"
-        for k, v in params.items()
-        if k not in skip and v
-    ]
-    return " | ".join(parts) if parts else "Filtrlar yo'q"
+    # PDF faylini javob sifatida qaytarish
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
